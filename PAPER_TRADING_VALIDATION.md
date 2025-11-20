@@ -1,66 +1,66 @@
-# Paper Trading Validation Guide
+# 模拟交易验证指南
 
-## Overview
+## 概述
 
-This guide walks you through validating the Agentic AlphaHive Runtime system using IBKR Paper Trading before considering live trading.
+本指南指导您在考虑实盘交易前，使用 IBKR 模拟交易验证 Agentic AlphaHive Runtime 系统。
 
-## Prerequisites
+## 前置要求
 
-### 1. IBKR Paper Trading Account
+### 1. IBKR 模拟交易账户
 
-- Sign up at: https://www.interactivebrokers.com/en/trading/tws.php
-- Download and install **IB Gateway** (lighter than TWS)
-- **Important**: Use Paper Trading mode (port 4002)
+- 注册地址: https://www.interactivebrokers.com/en/trading/tws.php
+- 下载并安装 **IB Gateway**（比 TWS 更轻量）
+- **重要**: 使用模拟交易模式（端口 4002）
 
-### 2. API Keys Required
+### 2. 所需 API 密钥
 
-Create a `.env` file in the project root:
+在项目根目录创建 `.env` 文件：
 
 ```bash
-# Copy from example
+# 从示例文件复制
 cp .env.example .env
 
-# Edit with your keys
+# 编辑并填入您的密钥
 nano .env
 ```
 
-Required keys:
+必需的密钥：
 ```
-OPENROUTER_API_KEY=your_key_here    # Get from https://openrouter.ai/keys
-IBKR_PORT=4002                       # Paper trading port
-IBKR_CLIENT_ID=1                     # Main AI client
-THETADATA_API_KEY=your_key_here      # Optional, for market data
+OPENROUTER_API_KEY=your_key_here    # 从 https://openrouter.ai/keys 获取
+IBKR_PORT=4002                       # 模拟交易端口
+IBKR_CLIENT_ID=1                     # 主 AI 客户端
+THETADATA_API_KEY=your_key_here      # 可选，用于市场数据
 ```
 
-### 3. Start IBKR Gateway
+### 3. 启动 IBKR Gateway
 
 ```bash
-# On Linux/Mac
+# 在 Linux/Mac 上
 ~/IBController/IBControllerGatewayStart.sh &
 
-# On Windows
-# Run IB Gateway from Start Menu
+# 在 Windows 上
+# 从开始菜单运行 IB Gateway
 
-# Verify it's running on port 4002
+# 验证其运行在 4002 端口
 netstat -an | grep 4002
 ```
 
-**Important**:
-- Enable API connections in IB Gateway settings
-- Set "Read-Only API" to FALSE (required for paper trading)
-- Port 4002 = Paper Trading Gateway
+**重要事项**:
+- 在 IB Gateway 设置中启用 API 连接
+- 将 "Read-Only API" 设置为 FALSE（模拟交易必需）
+- 端口 4002 = 模拟交易网关
 
-## Step-by-Step Validation
+## 分步验证
 
-### Step 1: Reset Circuit Breaker
+### 步骤 1: 重置熔断器
 
-The circuit breaker may have been triggered during development testing:
+熔断器可能在开发测试期间被触发：
 
 ```bash
-# Check status
+# 检查状态
 cat ~/trading_workspace/state/agent_memory.json
 
-# Circuit breaker should show:
+# 熔断器应显示:
 {
   "safety_state": {
     "circuit_breaker_triggered": false,
@@ -69,14 +69,14 @@ cat ~/trading_workspace/state/agent_memory.json
 }
 ```
 
-✅ **Already done** - Circuit breaker is reset!
+✅ **已完成** - 熔断器已重置！
 
-### Step 2: Verify IBKR Connection
+### 步骤 2: 验证 IBKR 连接
 
-Test that the system can connect to IBKR Paper Trading:
+测试系统能否连接到 IBKR 模拟交易：
 
 ```bash
-# Test IBKR MCP server health
+# 测试 IBKR MCP 服务器健康状态
 python3 -c "
 from mcp_servers.ibkr import get_connection_manager, ConnectionMode
 manager = get_connection_manager()
@@ -85,87 +85,87 @@ print(f'Connected: {manager.is_connected}')
 "
 ```
 
-Expected output:
+预期输出：
 ```
 ✅ Connected to IBKR Paper Trading (Gateway)
 Connected: True
 ```
 
-Or use the MCP tool directly:
+或直接使用 MCP 工具：
 
 ```python
-# In Claude Code
+# 在 Claude Code 中
 mcp__ibkr__health_check()
-# Should return: {"is_connected": true, "mode": "Paper Trading (Gateway)", ...}
+# 应返回: {"is_connected": true, "mode": "Paper Trading (Gateway)", ...}
 
 mcp__ibkr__get_account()
-# Should return real account data from IBKR, not mock $10,000
+# 应返回来自 IBKR 的真实账户数据，而非模拟的 $10,000
 ```
 
-### Step 3: Install Dependencies
+### 步骤 3: 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Step 4: Initialize Database
+### 步骤 4: 初始化数据库
 
 ```bash
-# Create trades database
+# 创建交易数据库
 python -c "from data_lake import db_helpers; print('Database initialized')"
 
-# Verify database exists
+# 验证数据库存在
 ls -lh data_lake/trades.db
 ```
 
-### Step 5: Run Test Cycle
+### 步骤 5: 运行测试周期
 
-Start the runtime with IBKR connection:
+启动带 IBKR 连接的运行时：
 
 ```bash
-# Run the main loop (press Ctrl+C to stop)
+# 运行主循环（按 Ctrl+C 停止）
 python runtime/main_loop.py
 ```
 
-**What to look for:**
+**关注内容：**
 
-✅ **Good signs:**
+✅ **正常标志：**
 ```
 INFO - === Agentic AlphaHive Runtime Starting ===
 INFO - Watchdog process started (PID: XXXXX)
 INFO - === Starting Trading Cycle ===
-INFO - Current account value: $1,027,195.09    # <-- Real IBKR value!
+INFO - Current account value: $1,027,195.09    # <-- 来自 IBKR 的真实值！
 INFO - Watchdog monitoring started
 ```
 
-❌ **Bad signs:**
+❌ **异常标志：**
 ```
-WARNING - Circuit breaker active - skipping cycle    # Circuit breaker triggered
-ERROR - Failed to connect to IBKR                    # IBKR Gateway not running
-WARNING - Using fallback account value               # Can't reach IBKR
-INFO - Initial account value: $10000.00              # Mock data (not real IBKR)
+WARNING - Circuit breaker active - skipping cycle    # 熔断器已触发
+ERROR - Failed to connect to IBKR                    # IBKR Gateway 未运行
+WARNING - Using fallback account value               # 无法连接到 IBKR
+INFO - Initial account value: $10000.00              # 模拟数据（非真实 IBKR）
 ```
 
-### Step 6: Run Commander Agent (via Claude Code)
+### 步骤 6: 运行 Commander 代理（通过 Claude Code）
 
-The main loop provides the runtime, but **Claude Code acts as the Commander** to make trading decisions.
+主循环提供运行时，但 **Claude Code 充当指挥官** 做出交易决策。
 
-In Claude Code, start a trading cycle:
+在 Claude Code 中，启动一个交易周期：
 
 ```python
-# === SENSE Phase ===
-# Get account and positions
+# === SENSE 阶段 ===
+# 获取账户和持仓
 account = mcp__ibkr__get_account()
 positions = mcp__ibkr__get_positions()
 
-print(f"Account: ${account['net_liquidation']:,.2f}")
-print(f"Positions: {len(positions)}")
+print(f"账户: ${account['net_liquidation']:,.2f}")
+print(f"持仓: {len(positions)}")
 
-# Get market data
+# 获取市场数据
 symbols = ["AAPL", "NVDA", "TSLA"]
 quotes = mcp__ThetaData__stock_snapshot_quote(symbol=symbols)
 
-# === THINK Phase ===
+# === THINK 阶段 ===
 from skills import consult_swarm
 
 market_data = {
@@ -176,14 +176,14 @@ market_data = {
     "positions": positions
 }
 
-# Consult the swarm for signals
+# 咨询蜂群获取信号
 signals = consult_swarm(sector="TECH", market_data=market_data)
 
-print(f"Swarm returned {len(signals)} signals:")
+print(f"蜂群返回 {len(signals)} 个信号:")
 for signal in signals:
     print(f"  - {signal['instance_id']}: {signal['signal']} on {signal['target']}")
 
-# === DECIDE Phase ===
+# === DECIDE 阶段 ===
 from skills import place_order_with_guard
 
 approved_trades = []
@@ -191,7 +191,7 @@ for signal in signals:
     if signal["signal"] == "NO_TRADE":
         continue
 
-    # Validate against safety limits
+    # 根据安全限制验证
     result = place_order_with_guard(
         symbol=signal["target"],
         strategy=signal["signal"],
@@ -203,14 +203,14 @@ for signal in signals:
     if result.success:
         approved_trades.append((signal, result))
     else:
-        print(f"❌ Rejected: {result.error}")
+        print(f"❌ 已拒绝: {result.error}")
 
-# === ACT Phase ===
+# === ACT 阶段 ===
 from skills.mcp_bridge import execute_order_with_ibkr
 
 for signal, validated_order in approved_trades:
     try:
-        # Submit to IBKR
+        # 提交到 IBKR
         ibkr_result = mcp__ibkr__place_order(
             symbol=signal["target"],
             strategy=signal["signal"],
@@ -219,7 +219,7 @@ for signal, validated_order in approved_trades:
             capital_required=signal["params"]["capital_required"]
         )
 
-        # Update trade status
+        # 更新交易状态
         final_result = execute_order_with_ibkr(
             validated_order=validated_order,
             legs=signal["params"]["legs"],
@@ -231,63 +231,63 @@ for signal, validated_order in approved_trades:
         )
 
         if final_result.success:
-            print(f"✅ Order placed: {signal['target']} (order_id={final_result.order_id})")
+            print(f"✅ 订单已提交: {signal['target']} (order_id={final_result.order_id})")
         else:
-            print(f"❌ IBKR rejected: {final_result.error}")
+            print(f"❌ IBKR 拒绝: {final_result.error}")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ 错误: {e}")
 ```
 
-## Validation Checklist
+## 验证检查清单
 
-Complete these tests before considering live trading:
+在考虑实盘交易前完成这些测试：
 
-### Safety Layer Tests
+### 安全层测试
 
-- [ ] **Max risk violation**: Attempt order with max_risk > $500
-  - Expected: Rejected with safety violation logged
-- [ ] **Max capital violation**: Attempt order with capital > $2000
-  - Expected: Rejected with safety violation logged
-- [ ] **Circuit breaker**: Simulate 10% drawdown
-  - Expected: All trading halts, requires manual reset
+- [ ] **最大风险违规**: 尝试 max_risk > $500 的订单
+  - 预期: 拒绝并记录安全违规
+- [ ] **最大资金违规**: 尝试 capital > $2000 的订单
+  - 预期: 拒绝并记录安全违规
+- [ ] **熔断器**: 模拟 10% 回撤
+  - 预期: 所有交易停止，需手动重置
 
-### Functional Tests
+### 功能测试
 
-- [ ] **Account data**: Verify real IBKR account values (not $10,000 mock)
-- [ ] **Positions fetch**: Get current positions from IBKR
-- [ ] **Swarm execution**: Swarm returns signals within 30 seconds
-- [ ] **Order validation**: place_order_with_guard() validates correctly
-- [ ] **Order submission**: IBKR MCP accepts valid paper orders
-- [ ] **Snapshot logging**: Each decision creates snapshot in data_lake/snapshots/
-- [ ] **Trade logging**: Orders logged to trades.db
+- [ ] **账户数据**: 验证真实 IBKR 账户值（非 $10,000 模拟值）
+- [ ] **持仓获取**: 从 IBKR 获取当前持仓
+- [ ] **蜂群执行**: 蜂群在 30 秒内返回信号
+- [ ] **订单验证**: place_order_with_guard() 正确验证
+- [ ] **订单提交**: IBKR MCP 接受有效的模拟订单
+- [ ] **快照记录**: 每个决策在 data_lake/snapshots/ 中创建快照
+- [ ] **交易记录**: 订单记录到 trades.db
 
-### Watchdog Tests
+### 看门狗测试
 
-- [ ] **Heartbeat monitoring**: Watchdog detects stale heartbeat (stop main_loop)
-- [ ] **Real account value**: Watchdog shows real IBKR value, not $10,000
-- [ ] **Circuit breaker trigger**: Watchdog can trigger circuit breaker on drawdown
-- [ ] **Independent process**: Watchdog runs as separate process (check with `ps aux | grep watchdog`)
+- [ ] **心跳监控**: 看门狗检测到停滞的心跳（停止 main_loop）
+- [ ] **真实账户值**: 看门狗显示真实 IBKR 值，而非 $10,000
+- [ ] **熔断器触发**: 看门狗可在回撤时触发熔断器
+- [ ] **独立进程**: 看门狗作为独立进程运行（用 `ps aux | grep watchdog` 检查）
 
-### 30-Day Validation Period
+### 30 天验证期
 
-Run paper trading for 30 consecutive days:
+连续运行模拟交易 30 天：
 
-1. **Daily monitoring** (15 min/day):
-   - Check logs for errors
-   - Review snapshots in data_lake/snapshots/
-   - Verify no circuit breaker triggers
-   - Review trade decisions in trades.db
+1. **每日监控**（15 分钟/天）:
+   - 检查日志中的错误
+   - 查看 data_lake/snapshots/ 中的快照
+   - 验证没有熔断器触发
+   - 在 trades.db 中查看交易决策
 
-2. **Weekly review** (1 hour/week):
-   - Analyze P&L (if trades executed)
-   - Review safety violations
-   - Check swarm signal quality
-   - Update strategy templates if needed
+2. **每周回顾**（1 小时/周）:
+   - 分析 P&L（如果有交易执行）
+   - 查看安全违规
+   - 检查蜂群信号质量
+   - 如需要更新策略模板
 
-3. **Metrics to track**:
+3. **追踪指标**:
    ```sql
-   -- Query trades database
+   -- 查询交易数据库
    SELECT
        COUNT(*) as total_signals,
        SUM(CASE WHEN status='VALIDATED' THEN 1 ELSE 0 END) as validated,
@@ -296,15 +296,15 @@ Run paper trading for 30 consecutive days:
    FROM trades;
    ```
 
-## Troubleshooting
+## 故障排除
 
 ### "Circuit breaker active - skipping cycle"
 
-**Cause**: Circuit breaker was triggered (10% drawdown or manual trigger)
+**原因**: 熔断器已触发（10% 回撤或手动触发）
 
-**Fix**:
+**修复**:
 ```bash
-# Reset circuit breaker
+# 重置熔断器
 python -c "
 import json
 from pathlib import Path
@@ -324,116 +324,116 @@ print('Circuit breaker reset')
 
 ### "Using fallback account value: $10,000"
 
-**Cause**: Watchdog can't connect to IBKR Gateway
+**原因**: 看门狗无法连接到 IBKR Gateway
 
-**Fix**:
-1. Verify IBKR Gateway is running: `netstat -an | grep 4002`
-2. Check .env has correct IBKR_PORT=4002
-3. Enable API in IB Gateway settings
-4. Set "Read-Only API" to FALSE
+**修复**:
+1. 验证 IBKR Gateway 正在运行: `netstat -an | grep 4002`
+2. 检查 .env 中有正确的 IBKR_PORT=4002
+3. 在 IB Gateway 设置中启用 API
+4. 将 "Read-Only API" 设置为 FALSE
 
 ### "ERROR: Failed to connect to IBKR"
 
-**Cause**: IBKR Gateway not running or wrong port
+**原因**: IBKR Gateway 未运行或端口错误
 
-**Fix**:
-1. Start IB Gateway: `~/IBController/IBControllerGatewayStart.sh`
-2. Wait 30 seconds for startup
-3. Verify with: `telnet localhost 4002`
-4. Check logs: `~/IBController/Logs/`
+**修复**:
+1. 启动 IB Gateway: `~/IBController/IBControllerGatewayStart.sh`
+2. 等待 30 秒启动
+3. 验证: `telnet localhost 4002`
+4. 检查日志: `~/IBController/Logs/`
 
-### Swarm returns empty signals
+### 蜂群返回空信号
 
-**Cause**: LLM API key missing or invalid
+**原因**: LLM API 密钥缺失或无效
 
-**Fix**:
+**修复**:
 ```bash
-# Check .env file
+# 检查 .env 文件
 grep OPENROUTER_API_KEY .env
 
-# Test OpenRouter connection
+# 测试 OpenRouter 连接
 curl https://openrouter.ai/api/v1/auth/key \
   -H "Authorization: Bearer $OPENROUTER_API_KEY"
 ```
 
-## Success Criteria
+## 成功标准
 
-Before transitioning to live trading:
+在过渡到实盘交易前：
 
-### Technical Requirements
-- ✅ All unit tests pass
-- ✅ Watchdog detects frozen process within 60s
-- ✅ Real IBKR data flowing (not mock $10,000)
-- ✅ Circuit breaker triggers on 10% drawdown
-- ✅ Safety layer rejects over-limit orders
-- ✅ All decisions logged with snapshots
+### 技术要求
+- ✅ 所有单元测试通过
+- ✅ 看门狗在 60 秒内检测到冻结进程
+- ✅ 真实 IBKR 数据流（非模拟 $10,000）
+- ✅ 熔断器在 10% 回撤时触发
+- ✅ 安全层拒绝超限订单
+- ✅ 所有决策记录并带快照
 
-### Validation Requirements
-- ✅ 30 days of paper trading completed
-- ✅ Zero critical errors in logs
-- ✅ P&L tracking accurate
-- ✅ Watchdog never failed to detect issues
-- ✅ Manual kill switch tested and works
+### 验证要求
+- ✅ 完成 30 天模拟交易
+- ✅ 日志中零关键错误
+- ✅ P&L 跟踪准确
+- ✅ 看门狗从未漏检问题
+- ✅ 手动紧急停止开关测试通过
 
-### Human Approval Requirements
-- ✅ Strategy performance meets expectations
-- ✅ Risk management working correctly
-- ✅ You understand and accept the risks
-- ✅ Capital allocation decided
-- ✅ Emergency procedures documented
+### 人工批准要求
+- ✅ 策略表现符合预期
+- ✅ 风险管理正常工作
+- ✅ 您理解并接受风险
+- ✅ 资金分配已决定
+- ✅ 应急程序已记录
 
-## Next Steps After Validation
+## 验证后的后续步骤
 
-1. **Review 30-day results** with a mentor or experienced trader
-2. **Adjust safety limits** if needed (in .env and execution_gate.py)
-3. **Start small** with live trading (e.g., $5,000 account)
-4. **Monitor closely** for first week of live trading
-5. **Scale gradually** as confidence builds
+1. **与导师或经验丰富的交易员一起审查 30 天结果**
+2. **如需要调整安全限制**（在 .env 和 execution_gate.py 中）
+3. **小额开始**实盘交易（例如 $5,000 账户）
+4. **密切监控**实盘交易的第一周
+5. **随着信心建立逐步扩大规模**
 
-## Emergency Procedures
+## 应急程序
 
-If something goes wrong during paper trading:
+如果模拟交易期间出现问题：
 
-### Manual Kill Switch
+### 手动紧急停止开关
 ```bash
-# Kill all processes
+# 终止所有进程
 pkill -f "python runtime/main_loop.py"
 pkill -f "runtime.watchdog"
 
-# Reset circuit breaker
+# 重置熔断器
 python -c "from data_lake.db_helpers import reset_circuit_breaker; reset_circuit_breaker()"
 ```
 
-### Close All Positions (via IBKR)
+### 关闭所有持仓（通过 IBKR）
 ```python
-# In Claude Code
+# 在 Claude Code 中
 positions = mcp__ibkr__get_positions()
 
 for pos in positions:
-    print(f"Closing {pos['symbol']}...")
-    # Manually close via IB Gateway UI or create close orders
+    print(f"正在关闭 {pos['symbol']}...")
+    # 通过 IB Gateway UI 手动关闭或创建平仓订单
 ```
 
-### Review Logs
+### 查看日志
 ```bash
-# Check what happened
+# 检查发生了什么
 tail -n 100 ~/trading_workspace/logs/main.log
 tail -n 100 ~/trading_workspace/logs/watchdog.log
 
-# Review trade database
+# 查看交易数据库
 sqlite3 data_lake/trades.db "SELECT * FROM trades ORDER BY created_at DESC LIMIT 10;"
 ```
 
 ---
 
-## Summary
+## 总结
 
-Paper trading validation is **mandatory** before live trading. Take your time, be thorough, and don't skip steps. The 30-day validation period helps you:
+模拟交易验证在实盘交易前是**强制性的**。花时间，彻底进行，不要跳过步骤。30 天验证期帮助您：
 
-1. **Build confidence** in the system's safety mechanisms
-2. **Understand** the AI's decision-making process
-3. **Identify edge cases** before risking real money
-4. **Refine strategies** based on market conditions
-5. **Verify technical reliability** under various scenarios
+1. **建立信心**在系统的安全机制中
+2. **理解** AI 的决策过程
+3. **识别边缘情况**在冒真实资金风险之前
+4. **根据市场条件优化策略**
+5. **验证技术可靠性**在各种场景下
 
-Remember: **Paper trading should be boring**. If it's exciting or stressful, the system isn't ready for live trading yet.
+记住：**模拟交易应该是无聊的**。如果它令人兴奋或有压力，系统还没准备好进行实盘交易。
