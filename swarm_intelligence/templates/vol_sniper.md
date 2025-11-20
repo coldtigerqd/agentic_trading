@@ -19,16 +19,24 @@ You have been configured with the following parameters:
 
 For each symbol in your pool, evaluate:
 
-1. **Historical Context Analysis (NEW - Use Market Data Skills)**
+1. **Historical Context Analysis (Use Technical Indicators)**
    - Analyze 30-day price action using historical bars
-   - Calculate support/resistance levels from recent highs/lows
-   - Identify trend direction (uptrend/downtrend/range-bound)
-   - Measure recent volatility to contextualize current IV
+   - Calculate support/resistance levels using swing highs/lows
+   - Identify trend direction using trend detection indicators
+   - Measure volatility using ATR and Bollinger Bands
 
    ```python
-   # Example: Get multi-timeframe data for technical analysis
+   # Example: Get multi-timeframe data and apply technical indicators
    # Note: In actual runtime, access via market_data parameter
-   from skills import get_multi_timeframe_data
+   from skills import (
+       get_multi_timeframe_data,
+       find_swing_highs,
+       find_swing_lows,
+       detect_trend,
+       calculate_atr,
+       calculate_bollinger_bands,
+       calculate_rsi
+   )
 
    mtf = get_multi_timeframe_data(
        symbol="{{ symbol_pool[0] }}",  # First symbol in pool
@@ -36,16 +44,39 @@ For each symbol in your pool, evaluate:
        lookback_days=30
    )
 
-   # Analyze daily bars for trend
+   # Analyze daily bars with technical indicators
    daily_bars = mtf['timeframes']['daily']['bars']
-   recent_high = max([b['high'] for b in daily_bars[-20:]])
-   recent_low = min([b['low'] for b in daily_bars[-20:]])
+
+   # Identify support/resistance using swing points
+   resistance_levels = find_swing_highs(daily_bars, window=5)
+   support_levels = find_swing_lows(daily_bars, window=5)
+
+   # Detect trend strength and direction
+   trend = detect_trend(daily_bars, sma_short=20, sma_long=50)
+   # Returns: STRONG_UPTREND, WEAK_UPTREND, SIDEWAYS, WEAK_DOWNTREND, STRONG_DOWNTREND
+
+   # Measure volatility context
+   atr = calculate_atr(daily_bars, period=14)
+   current_atr = atr[-1]  # Higher ATR = higher volatility
+
+   # Bollinger Bands for price positioning
+   bb = calculate_bollinger_bands(daily_bars, period=20, std_dev=2.0)
    current_price = daily_bars[-1]['close']
 
-   # Calculate position in range
-   price_position = (current_price - recent_low) / (recent_high - recent_low)
-   # If price_position > 0.8: near resistance (favor call spreads)
-   # If price_position < 0.2: near support (favor put spreads)
+   # Calculate position in Bollinger Band range
+   bb_position = (current_price - bb['lower_band'][-1]) / (bb['upper_band'][-1] - bb['lower_band'][-1])
+   # If bb_position > 0.8: near upper band (favor call spreads)
+   # If bb_position < 0.2: near lower band (favor put spreads)
+
+   # Check RSI for overbought/oversold conditions
+   rsi = calculate_rsi(daily_bars, period=14)
+   current_rsi = rsi[-1]
+   # RSI > 70: overbought (favor call spreads)
+   # RSI < 30: oversold (favor put spreads)
+
+   # Select strikes based on support/resistance
+   # For PUT spreads: sell strike near support level, buy strike 5% lower
+   # For CALL spreads: sell strike near resistance level, buy strike 5% higher
    ```
 
 2. **IV Rank/Percentile**

@@ -37,7 +37,14 @@ Analyze trend across multiple timeframes to confirm strength:
 # }
 
 # For each symbol in pool, get multi-timeframe data
-from skills import get_multi_timeframe_data
+from skills import (
+    get_multi_timeframe_data,
+    calculate_sma,
+    calculate_ema,
+    detect_trend,
+    calculate_macd,
+    calculate_adx
+)
 
 mtf_data = get_multi_timeframe_data(
     symbol="AAPL",  # Replace with actual symbol from pool
@@ -45,23 +52,36 @@ mtf_data = get_multi_timeframe_data(
     lookback_days=30
 )
 
-# Daily trend analysis (primary)
+# Daily trend analysis (primary) - Use technical indicators
 daily_bars = mtf_data['timeframes']['daily']['bars']
-sma_20 = calculate_sma(daily_bars[-20:])
-sma_50 = calculate_sma(daily_bars[-50:]) if len(daily_bars) >= 50 else None
 
-# Trend identified if:
-# - Price > SMA_20 > SMA_50: STRONG UPTREND
-# - Price > SMA_20 and SMA_20 flat: WEAK UPTREND
-# - Price < SMA_20 < SMA_50: STRONG DOWNTREND
+# Use detect_trend() for automated trend classification
+trend = detect_trend(daily_bars, sma_short=20, sma_long=50)
+# Returns: STRONG_UPTREND, WEAK_UPTREND, SIDEWAYS, WEAK_DOWNTREND, STRONG_DOWNTREND
+
+# Calculate SMAs for additional context
+sma_20 = calculate_sma(daily_bars, period=20)
+sma_50 = calculate_sma(daily_bars, period=50)
+
+# MACD for trend momentum
+macd = calculate_macd(daily_bars, fast=12, slow=26, signal=9)
+# Bullish: macd['histogram'][-1] > 0
+# Bearish: macd['histogram'][-1] < 0
+
+# ADX for trend strength
+adx = calculate_adx(daily_bars, period=14)
+# ADX > 25: Strong trend (regardless of direction)
+# ADX < 20: Weak/no trend
 
 # Hourly trend confirmation (secondary)
 hourly_bars = mtf_data['timeframes']['1h']['bars']
-recent_hourly_trend = analyze_trend(hourly_bars[-24:])  # Last 24 hours
+hourly_trend = detect_trend(hourly_bars[-24:], sma_short=10, sma_long=20)
 
 # 5-minute entry timing (tertiary)
 five_min_bars = mtf_data['timeframes']['5min']['bars']
-recent_momentum = analyze_momentum(five_min_bars[-78:])  # Last trading day
+five_min_ema_fast = calculate_ema(five_min_bars[-78:], period=9)
+five_min_ema_slow = calculate_ema(five_min_bars[-78:], period=21)
+# Entry signal: fast EMA crosses above slow EMA (bullish)
 ```
 
 ### 2. Support/Resistance Identification
@@ -69,23 +89,32 @@ recent_momentum = analyze_momentum(five_min_bars[-78:])  # Last trading day
 Use historical data to identify key price levels:
 
 ```python
-# Get 30-day high/low for S/R levels
-daily_bars = mtf_data['timeframes']['daily']['bars']
-recent_bars = daily_bars[-30:]
+# Use technical indicators for S/R identification
+from skills import find_swing_highs, find_swing_lows, calculate_pivot_points
 
-# Calculate support/resistance
-swing_highs = find_swing_highs(recent_bars, window=5)
-swing_lows = find_swing_lows(recent_bars, window=5)
+daily_bars = mtf_data['timeframes']['daily']['bars']
+
+# Identify swing highs and lows (support/resistance)
+swing_highs = find_swing_highs(daily_bars, window=5)
+swing_lows = find_swing_lows(daily_bars, window=5)
+
+# Get today's pivot points for intraday levels
+pivot_levels = calculate_pivot_points(daily_bars[-1])
+# Returns: {'pivot', 'r1', 'r2', 's1', 's2'}
 
 # Current price position
 current_price = daily_bars[-1]['close']
-nearest_resistance = min([h for h in swing_highs if h > current_price])
-nearest_support = max([l for l in swing_lows if l < current_price])
+nearest_resistance = min([h for h in swing_highs if h > current_price], default=current_price * 1.05)
+nearest_support = max([l for l in swing_lows if l < current_price], default=current_price * 0.95)
 
 # Risk/Reward calculation
 risk = current_price - nearest_support
 reward = nearest_resistance - current_price
-rr_ratio = reward / risk  # Should be >= {{ min_rr_ratio }}
+rr_ratio = reward / risk if risk > 0 else 0  # Should be >= {{ min_rr_ratio }}
+
+# Alternative: Use pivot points for shorter-term targets
+# Resistance: pivot_levels['r1'] or pivot_levels['r2']
+# Support: pivot_levels['s1'] or pivot_levels['s2']
 ```
 
 ### 3. Volatility Analysis
@@ -93,18 +122,29 @@ rr_ratio = reward / risk  # Should be >= {{ min_rr_ratio }}
 Calculate historical volatility from cached data:
 
 ```python
-# 20-day historical volatility
-daily_returns = []
-for i in range(1, min(21, len(daily_bars))):
-    ret = (daily_bars[-i]['close'] - daily_bars[-i-1]['close']) / daily_bars[-i-1]['close']
-    daily_returns.append(ret)
+# Use technical indicators for volatility analysis
+from skills import (
+    calculate_historical_volatility,
+    calculate_atr,
+    calculate_bollinger_bands
+)
 
-import math
-hist_vol = stdev(daily_returns) * math.sqrt(252)  # Annualized
+# Calculate 20-day annualized historical volatility
+hist_vol = calculate_historical_volatility(daily_bars, period=20)
+current_hv = hist_vol[-1]  # Latest HV value (annualized)
 
-# Compare to implied volatility (from option data)
-# If IV > HV * 1.2: Volatility is rich (favor selling)
-# If IV < HV * 0.8: Volatility is cheap (favor buying)
+# ATR for absolute volatility measurement
+atr = calculate_atr(daily_bars, period=14)
+current_atr = atr[-1]  # Current ATR in price units
+
+# Bollinger Bands for volatility context
+bb = calculate_bollinger_bands(daily_bars, period=20, std_dev=2.0)
+bb_width = bb['bandwidth'][-1]  # Normalized bandwidth (volatility proxy)
+
+# Compare to implied volatility (from option data if available)
+# If IV > HV * 1.2: Volatility is rich (favor selling premium)
+# If IV < HV * 0.8: Volatility is cheap (favor buying options)
+# If bb_width expanding: Volatility increasing (breakout potential)
 ```
 
 ### 4. Volume Confirmation
@@ -112,7 +152,10 @@ hist_vol = stdev(daily_returns) * math.sqrt(252)  # Annualized
 Verify trend with volume analysis:
 
 ```python
-# Calculate average volume (20-day)
+# Use technical indicators for volume analysis
+from skills import calculate_obv, calculate_vwap
+
+# Calculate average volume (20-day) - Simple method
 avg_volume = sum([b['volume'] for b in daily_bars[-20:]]) / 20
 
 # Recent volume spike?
@@ -120,6 +163,18 @@ recent_volume = daily_bars[-1]['volume']
 volume_ratio = recent_volume / avg_volume
 
 # Strong volume confirmation if ratio >= {{ volume_multiplier }}
+
+# On-Balance Volume (OBV) for trend confirmation
+obv = calculate_obv(daily_bars)
+# Rising OBV + Uptrend = Strong confirmation
+# Falling OBV + Downtrend = Strong confirmation
+# Divergence (OBV opposite to price) = Warning signal
+
+# VWAP for institutional price levels
+vwap = calculate_vwap(daily_bars)
+current_vwap = vwap[-1]
+# Price > VWAP: Bullish (institutions buying)
+# Price < VWAP: Bearish (institutions selling)
 ```
 
 ### 5. Entry Timing with RSI
@@ -127,13 +182,23 @@ volume_ratio = recent_volume / avg_volume
 Use hourly data for entry timing:
 
 ```python
+# Use RSI indicator for entry timing
+from skills import calculate_rsi, calculate_stochastic
+
 hourly_bars = mtf_data['timeframes']['1h']['bars']
 
 # Calculate RSI (14-period)
 rsi = calculate_rsi(hourly_bars, period=14)
+current_rsi = rsi[-1]
 
+# Entry timing rules:
 # For UPTREND: Enter on RSI pullback to {{ rsi_low }}-{{ rsi_high }}
 # For DOWNTREND: Enter on RSI rally to (100-{{ rsi_high }})-(100-{{ rsi_low }})
+
+# Additional confirmation: Stochastic Oscillator
+stoch = calculate_stochastic(hourly_bars, k_period=14, d_period=3)
+# %K crosses above %D in oversold region (<20): Bullish entry
+# %K crosses below %D in overbought region (>80): Bearish entry
 ```
 
 ## Signal Generation
