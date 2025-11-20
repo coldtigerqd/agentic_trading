@@ -1,7 +1,7 @@
 """
-Market Data Skill - Claude Code callable market data functions.
+市场数据技能 - Claude Code 可调用的市场数据函数。
 
-Provides historical OHLCV data access, watchlist management, and data quality indicators.
+提供历史 OHLCV 数据访问、监控列表管理和数据质量指标。
 """
 
 import time
@@ -26,60 +26,60 @@ def get_historical_bars(
     lookback_days: int = 30
 ) -> Dict:
     """
-    Query historical OHLCV bars for a symbol.
+    查询标的的历史 OHLCV K线数据。
 
-    Supports multiple intervals with on-the-fly aggregation from 5-minute base data.
-    If data is missing, returns cache_hit=false to signal lazy backfill needed.
+    支持从5分钟基础数据即时聚合的多个时间周期。
+    如果数据缺失，返回 cache_hit=false 以表示需要延迟回填。
 
-    Args:
-        symbol: Stock symbol (e.g., "AAPL")
-        interval: Bar interval - "5min", "15min", "1h", or "daily"
-        lookback_days: Number of days to look back
+    参数:
+        symbol: 股票代码（例如 "AAPL"）
+        interval: K线周期 - "5min", "15min", "1h", 或 "daily"
+        lookback_days: 回溯天数
 
-    Returns:
-        Dictionary with bars and metadata
+    返回:
+        包含 K线数据和元数据的字典
 
-    Example:
+    示例:
         ```python
-        # Get 30 days of 5-minute bars
+        # 获取 30 天的 5 分钟K线
         result = get_historical_bars("AAPL", interval="5min", lookback_days=30)
 
         if result["cache_hit"]:
-            print(f"Retrieved {result['bar_count']} bars")
-            for bar in result["bars"][:5]:  # First 5 bars
+            print(f"获取到 {result['bar_count']} 根K线")
+            for bar in result["bars"][:5]:  # 前5根K线
                 print(f"{bar['timestamp']}: ${bar['close']}")
         else:
-            print(f"Cache miss - need to backfill {symbol}")
+            print(f"缓存未命中 - 需要回填 {symbol} 的数据")
         ```
     """
     start_time = time.time()
 
-    # Calculate date range
+    # 计算日期范围
     end = datetime.now()
     start = end - timedelta(days=lookback_days)
 
-    # Query bars
+    # 查询K线
     try:
         bars = get_bars(symbol.upper(), start, end, interval)
 
-        # Convert to dict format
+        # 转换为字典格式
         bars_dict = [bar.to_dict() for bar in bars]
 
-        # Expected bar count (approximate)
-        trading_days = lookback_days * (5/7)  # ~5 trading days per week
+        # 预期K线数量（近似值）
+        trading_days = lookback_days * (5/7)  # 每周约5个交易日
         if interval == "5min":
-            expected_bars = int(trading_days * 78)  # 78 bars per day
+            expected_bars = int(trading_days * 78)  # 每天78根K线
         elif interval == "15min":
-            expected_bars = int(trading_days * 26)  # 26 bars per day
+            expected_bars = int(trading_days * 26)  # 每天26根K线
         elif interval == "1h":
-            expected_bars = int(trading_days * 6.5)  # 6.5 hours per day
+            expected_bars = int(trading_days * 6.5)  # 每天6.5小时
         else:  # daily
             expected_bars = int(trading_days)
 
-        # Check cache hit rate
-        cache_hit = len(bars) >= (expected_bars * 0.8)  # 80% threshold
+        # 检查缓存命中率
+        cache_hit = len(bars) >= (expected_bars * 0.8)  # 80% 阈值
 
-        # Get data quality info
+        # 获取数据质量信息
         freshness = get_freshness_info(symbol.upper())
 
         query_time_ms = int((time.time() - start_time) * 1000)
@@ -111,30 +111,30 @@ def get_historical_bars(
             "bar_count": 0,
             "cache_hit": False,
             "error": str(e),
-            "message": "Failed to query historical bars - may need backfill"
+            "message": "查询历史K线失败 - 可能需要回填数据 (QUERY_FAILED)"
         }
 
 
 def get_latest_price(symbol: str) -> Dict:
     """
-    Get the most recent cached price for a symbol.
+    获取标的的最新缓存价格。
 
-    Args:
-        symbol: Stock symbol (e.g., "NVDA")
+    参数:
+        symbol: 股票代码（例如 "NVDA"）
 
-    Returns:
-        Dictionary with latest bar and staleness info
+    返回:
+        包含最新K线和数据新鲜度信息的字典
 
-    Example:
+    示例:
         ```python
         result = get_latest_price("NVDA")
 
         if result["success"]:
             print(f"NVDA: ${result['price']}")
-            print(f"Data age: {result['age_seconds']}s")
+            print(f"数据年龄: {result['age_seconds']}秒")
 
-            if result["age_seconds"] > 600:  # 10 minutes
-                print("⚠️ Data is stale - consider updating")
+            if result["age_seconds"] > 600:  # 10 分钟
+                print("⚠️ 数据已过时 - 建议更新")
         ```
     """
     try:
@@ -144,11 +144,11 @@ def get_latest_price(symbol: str) -> Dict:
             return {
                 "success": False,
                 "symbol": symbol.upper(),
-                "error": "No data available",
-                "message": "Symbol not in cache - add to watchlist and backfill"
+                "error": "无可用数据 (NO_DATA)",
+                "message": "标的不在缓存中 - 添加到监控列表并回填数据"
             }
 
-        # Calculate age
+        # 计算数据年龄
         bar_time = datetime.fromisoformat(latest.timestamp)
         age_seconds = int((datetime.now() - bar_time).total_seconds())
 
@@ -164,7 +164,7 @@ def get_latest_price(symbol: str) -> Dict:
             "volume": latest.volume,
             "vwap": latest.vwap,
             "age_seconds": age_seconds,
-            "is_stale": age_seconds > 600  # 10 minutes threshold
+            "is_stale": age_seconds > 600  # 10 分钟阈值
         }
 
     except Exception as e:
@@ -181,35 +181,35 @@ def add_to_watchlist(
     notes: str = ""
 ) -> Dict:
     """
-    Add a symbol to the active watchlist.
+    将标的添加到活跃监控列表。
 
-    Once added, the background updater will maintain fresh data for this symbol.
+    添加后，后台更新程序将为该标的维护最新数据。
 
-    Args:
-        symbol: Stock symbol (uppercase)
-        priority: Priority level (0-10, higher = updated first)
-        notes: Optional notes/tags for organizing symbols
+    参数:
+        symbol: 股票代码（大写）
+        priority: 优先级（0-10，数值越高越优先更新）
+        notes: 可选的备注/标签，用于组织标的
 
-    Returns:
-        Dictionary with status and next steps
+    返回:
+        包含状态和后续步骤的字典
 
-    Example:
+    示例:
         ```python
-        # Add TSLA to watchlist with high priority
-        result = add_to_watchlist("TSLA", priority=8, notes="High momentum stock")
+        # 以高优先级添加 TSLA 到监控列表
+        result = add_to_watchlist("TSLA", priority=8, notes="高动量股票")
 
         if result["success"]:
-            print(f"✓ Added {result['symbol']} to watchlist")
-            print(f"  Next: Trigger backfill for historical data")
+            print(f"✓ 已将 {result['symbol']} 添加到监控列表")
+            print(f"  下一步: 触发历史数据回填")
         ```
     """
     result = _add_to_watchlist(symbol.upper(), priority, notes)
 
     if result["success"]:
         result["next_steps"] = [
-            "1. Symbol added to watchlist",
-            "2. Background updater will fetch new bars every 5 minutes",
-            "3. Consider calling backfill_symbol() for historical data"
+            "1. 标的已添加到监控列表",
+            "2. 后台更新程序将每5分钟获取新K线",
+            "3. 建议调用 backfill_symbol() 获取历史数据"
         ]
 
     return result
@@ -217,23 +217,23 @@ def add_to_watchlist(
 
 def remove_from_watchlist(symbol: str) -> Dict:
     """
-    Remove a symbol from the watchlist (soft delete).
+    从监控列表中移除标的（软删除）。
 
-    Stops background updates but retains cached data.
+    停止后台更新但保留缓存数据。
 
-    Args:
-        symbol: Stock symbol
+    参数:
+        symbol: 股票代码
 
-    Returns:
-        Dictionary with status
+    返回:
+        包含状态的字典
 
-    Example:
+    示例:
         ```python
         result = remove_from_watchlist("GME")
 
         if result["success"]:
-            print(f"✓ Removed {symbol} from active watchlist")
-            print(f"  Cached data retained for queries")
+            print(f"✓ 已从活跃监控列表移除 {symbol}")
+            print(f"  缓存数据已保留用于查询")
         ```
     """
     return _remove_from_watchlist(symbol.upper())
@@ -241,24 +241,24 @@ def remove_from_watchlist(symbol: str) -> Dict:
 
 def get_watchlist() -> Dict:
     """
-    Get all active symbols in the watchlist with status info.
+    获取监控列表中的所有活跃标的及其状态信息。
 
-    Returns:
-        Dictionary with watchlist symbols and metadata
+    返回:
+        包含监控列表标的和元数据的字典
 
-    Example:
+    示例:
         ```python
         result = get_watchlist()
 
-        print(f"Active symbols: {result['total_count']}")
+        print(f"活跃标的数: {result['total_count']}")
         for symbol_info in result["symbols"]:
-            print(f"  {symbol_info['symbol']:6s} (P={symbol_info['priority']})")
+            print(f"  {symbol_info['symbol']:6s} (优先级={symbol_info['priority']})")
         ```
     """
     try:
         symbols = get_active_watchlist()
 
-        # Add freshness info for each symbol
+        # 为每个标的添加新鲜度信息
         for symbol_info in symbols:
             freshness = get_freshness_info(symbol_info["symbol"])
             if freshness:
@@ -295,21 +295,21 @@ def get_multi_timeframe_data(
     lookback_days: int = 30
 ) -> Dict:
     """
-    Get historical data for multiple timeframes in a single call.
+    在单次调用中获取多个时间周期的历史数据。
 
-    More efficient than calling get_historical_bars() multiple times.
+    比多次调用 get_historical_bars() 更高效。
 
-    Args:
-        symbol: Stock symbol
-        intervals: List of intervals (e.g., ["5min", "1h", "daily"])
-        lookback_days: Number of days to look back
+    参数:
+        symbol: 股票代码
+        intervals: 时间周期列表（例如 ["5min", "1h", "daily"]）
+        lookback_days: 回溯天数
 
-    Returns:
-        Dictionary with data for each timeframe
+    返回:
+        包含每个时间周期数据的字典
 
-    Example:
+    示例:
         ```python
-        # Get multi-timeframe data for technical analysis
+        # 获取用于技术分析的多时间周期数据
         result = get_multi_timeframe_data(
             symbol="AAPL",
             intervals=["5min", "1h", "daily"],
@@ -317,9 +317,9 @@ def get_multi_timeframe_data(
         )
 
         if result["success"]:
-            print(f"5min bars: {result['timeframes']['5min']['bar_count']}")
-            print(f"1h bars: {result['timeframes']['1h']['bar_count']}")
-            print(f"Daily bars: {result['timeframes']['daily']['bar_count']}")
+            print(f"5分钟K线: {result['timeframes']['5min']['bar_count']} 根")
+            print(f"1小时K线: {result['timeframes']['1h']['bar_count']} 根")
+            print(f"日线K线: {result['timeframes']['daily']['bar_count']} 根")
         ```
     """
     start_time = time.time()
@@ -355,7 +355,7 @@ def get_multi_timeframe_data(
 
 
 def _calculate_freshness_seconds(freshness_info: Dict) -> Optional[int]:
-    """Calculate how many seconds old the newest bar is"""
+    """计算最新K线的数据年龄（秒）"""
     if not freshness_info or not freshness_info.get("newest_bar"):
         return None
 
@@ -364,40 +364,40 @@ def _calculate_freshness_seconds(freshness_info: Dict) -> Optional[int]:
     return int(age.total_seconds())
 
 
-# === SKILL REGISTRATION INFO ===
+# === 技能注册信息 ===
 """
-These functions are designed to be called by Claude Code:
+这些函数设计为供 Claude Code 调用：
 
-**Historical Analysis:**
+**历史分析：**
 - get_historical_bars(symbol, interval, lookback_days)
 - get_multi_timeframe_data(symbol, intervals, lookback_days)
 
-**Real-time Queries:**
+**实时查询：**
 - get_latest_price(symbol)
 - get_watchlist()
 
-**Watchlist Management:**
+**监控列表管理：**
 - add_to_watchlist(symbol, priority, notes)
 - remove_from_watchlist(symbol)
 
-**Example Commander Workflow:**
+**Commander 工作流示例：**
 
 ```python
-# Check watchlist status
+# 检查监控列表状态
 watchlist = get_watchlist()
-print(f"Tracking {watchlist['total_count']} symbols")
+print(f"正在跟踪 {watchlist['total_count']} 个标的")
 
-# Add new symbol for analysis
-add_result = add_to_watchlist("MSFT", priority=7, notes="Big tech")
+# 添加新标的用于分析
+add_result = add_to_watchlist("MSFT", priority=7, notes="大型科技股")
 
-# Get multi-timeframe data for strategy analysis
+# 获取用于策略分析的多时间周期数据
 mtf_data = get_multi_timeframe_data(
     symbol="AAPL",
     intervals=["5min", "1h", "daily"],
     lookback_days=30
 )
 
-# Pass to swarm for analysis
+# 传递给蜂群进行分析
 from skills import consult_swarm
 signals = consult_swarm(
     sector="TECH",
