@@ -384,7 +384,8 @@ async def execute_swarm_concurrent(
 def consult_swarm(
     sector: str = "ALL",
     market_data: Optional[Dict] = None,
-    max_concurrent: int = 50
+    max_concurrent: int = 50,
+    skip_data_validation: bool = False
 ) -> List[Dict]:
     """
     Execute swarm intelligence analysis.
@@ -395,6 +396,7 @@ def consult_swarm(
         sector: Filter instances by sector ("ALL", "TECH", "FINANCE", etc.)
         market_data: Current market snapshot (if None, fetches fresh data)
         max_concurrent: Maximum concurrent LLM API calls
+        skip_data_validation: Skip data quality validation (NOT RECOMMENDED)
 
     Returns:
         List of signal dictionaries with structure:
@@ -426,6 +428,84 @@ def consult_swarm(
     # Fetch market data if not provided
     if market_data is None:
         market_data = fetch_market_snapshot()
+
+    # === DATA QUALITY PRE-FLIGHT CHECK ===
+    if not skip_data_validation:
+        from skills.data_quality import validate_data_quality, auto_trigger_backfill
+
+        # Extract symbols from market_data snapshot
+        symbols = []
+        if market_data and 'snapshot' in market_data:
+            symbols = list(market_data['snapshot'].keys())
+
+        # Also collect symbols from instance symbol pools
+        for instance in instances:
+            symbol_pool = instance.get('parameters', {}).get('symbol_pool', [])
+            symbols.extend(symbol_pool)
+
+        # Remove duplicates
+        symbols = list(set(symbols))
+
+        if symbols:
+            print(f"\n=== DATA QUALITY PRE-FLIGHT CHECK ===")
+            print(f"Validating data for {len(symbols)} symbols...")
+
+            # Validate data quality
+            validation = validate_data_quality(
+                symbols=symbols,
+                min_daily_bars=20,  # Reduced from 30 for more lenient check
+                min_hourly_bars=30,
+                min_5min_bars=200,
+                max_age_hours=8,  # Allow slightly stale data
+                require_all_intervals=False  # Be lenient
+            )
+
+            if not validation['valid']:
+                print(f"\n⚠️  DATA QUALITY VALIDATION FAILED")
+                print(f"Summary: {validation['summary']}")
+                print(f"\nIssues found:")
+
+                # Group issues by severity
+                critical_issues = [i for i in validation['issues'] if i['severity'] == 'CRITICAL']
+                high_issues = [i for i in validation['issues'] if i['severity'] == 'HIGH']
+
+                if critical_issues:
+                    print(f"  CRITICAL ({len(critical_issues)}):")
+                    for issue in critical_issues[:5]:  # Show first 5
+                        print(f"    - {issue['symbol']}: {issue['issue']} ({issue['detail']})")
+
+                if high_issues:
+                    print(f"  HIGH ({len(high_issues)}):")
+                    for issue in high_issues[:3]:  # Show first 3
+                        print(f"    - {issue['symbol']}: {issue['issue']} ({issue['detail']})")
+
+                print(f"\nRecommendations:")
+                for rec in validation['recommendations']:
+                    print(f"  → {rec}")
+
+                # Return NO_TRADE signals with data quality explanation
+                print(f"\n✗ ABORTING SWARM CONSULTATION - Data quality insufficient")
+                print(f"  Returning NO_TRADE signals due to data quality issues\n")
+
+                return [{
+                    "instance_id": "DATA_QUALITY_CHECK",
+                    "template_used": "N/A",
+                    "target": "N/A",
+                    "signal": "NO_TRADE",
+                    "params": {},
+                    "confidence": 0.0,
+                    "reasoning": (
+                        f"Data quality validation failed: {validation['summary']}. "
+                        f"Found {len(critical_issues)} critical and {len(high_issues)} high severity issues. "
+                        f"Recommendations: {'; '.join(validation['recommendations'])}"
+                    )
+                }]
+            else:
+                print(f"✓ Data quality validation PASSED")
+                print(f"  {len(validation['symbols_passed'])}/{len(symbols)} symbols have sufficient data\n")
+        else:
+            print(f"⚠️  No symbols provided for data quality validation")
+            print(f"  Proceeding with caution - swarm may fail due to missing data\n")
 
     # Execute swarm concurrently
     loop = asyncio.get_event_loop()

@@ -40,6 +40,27 @@ Execute this cycle on every invocation:
 ### 1. SENSE: Market & Account State
 
 ```python
+# === MARKET HOURS CHECK (NEW) ===
+from skills.market_calendar import get_market_session_info
+
+session_info = get_market_session_info()
+print(f"Market Session: {session_info['session']}")
+print(f"Market Open: {'✓' if session_info['market_open'] else '✗'}")
+
+if not session_info['market_open']:
+    print(f"Market Status: {session_info['session']}")
+    if session_info['next_market_open']:
+        print(f"Next Open: {session_info['next_market_open']}")
+        print(f"Time to Open: {session_info['time_to_open_minutes']} minutes")
+
+    # During market close, you can:
+    # 1. Review existing positions
+    # 2. Analyze historical data (if sufficient)
+    # 3. Wait for market open for fresh analysis
+    # But avoid swarm consultation with stale data
+    print("\n⚠️  Market is CLOSED - Fresh data unavailable")
+    print("Consider waiting for market open for optimal analysis\n")
+
 # Check account status
 from mcp__ibkr import get_account
 account = get_account()

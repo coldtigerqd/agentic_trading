@@ -540,3 +540,156 @@ def get_watchlist_performance_report(
         "underperformers": underperformers,
         "top_performers": top_performers
     }
+
+
+def add_to_watchlist(
+    symbol: str,
+    priority: int = 5,
+    notes: str = "",
+    auto_backfill: bool = True,
+    backfill_days: int = 60,
+    db_path: Optional[Path] = None
+) -> Dict:
+    """
+    Add a symbol to the watchlist with automatic data backfill.
+
+    Args:
+        symbol: Trading symbol to add
+        priority: Priority level (1-10, higher = more important)
+        notes: Optional notes about the symbol
+        auto_backfill: Whether to trigger automatic backfill (default: True)
+        backfill_days: Days of history to backfill (default: 60)
+        db_path: Path to database (default: DB_PATH)
+
+    Returns:
+        Dictionary with add result:
+        {
+            "symbol": str,
+            "status": str,  # "ADDED", "ALREADY_EXISTS", "REACTIVATED"
+            "priority": int,
+            "backfill_triggered": bool,
+            "backfill_info": Dict  # Backfill task details
+        }
+    """
+    if db_path is None:
+        db_path = DB_PATH
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+
+    try:
+        # Check if symbol already exists
+        cursor.execute("SELECT * FROM watchlist WHERE symbol = ?", (symbol,))
+        existing = cursor.fetchone()
+
+        if existing:
+            if existing["active"] == 1:
+                status = "ALREADY_EXISTS"
+                print(f"Symbol {symbol} already in active watchlist")
+            else:
+                # Reactivate
+                cursor.execute("""
+                    UPDATE watchlist
+                    SET active = 1, last_updated = ?, priority = ?, notes = ?
+                    WHERE symbol = ?
+                """, (now, priority, notes or existing["notes"], symbol))
+                conn.commit()
+                status = "REACTIVATED"
+                print(f"Symbol {symbol} reactivated in watchlist")
+        else:
+            # Insert new
+            cursor.execute("""
+                INSERT INTO watchlist (symbol, added_at, active, priority, notes)
+                VALUES (?, ?, 1, ?, ?)
+            """, (symbol, now, priority, notes or ""))
+            conn.commit()
+            status = "ADDED"
+            print(f"Symbol {symbol} added to watchlist")
+
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise e
+    finally:
+        conn.close()
+
+    # Trigger automatic backfill if enabled
+    backfill_info = None
+    backfill_triggered = False
+
+    if auto_backfill and status in ["ADDED", "REACTIVATED"]:
+        from skills.data_quality import auto_trigger_backfill
+
+        backfill_info = auto_trigger_backfill(
+            symbols=[symbol],
+            missing_intervals=["5min", "1h", "daily"],
+            days=backfill_days
+        )
+        backfill_triggered = True
+        print(f"  → Backfill queued: {backfill_days} days, {backfill_info['estimated_api_calls']} API calls")
+
+    return {
+        "symbol": symbol,
+        "status": status,
+        "priority": priority,
+        "backfill_triggered": backfill_triggered,
+        "backfill_info": backfill_info
+    }
+
+
+def remove_from_watchlist(
+    symbol: str,
+    db_path: Optional[Path] = None
+) -> Dict:
+    """
+    Remove (deactivate) a symbol from the watchlist.
+
+    Args:
+        symbol: Trading symbol to remove
+        db_path: Path to database (default: DB_PATH)
+
+    Returns:
+        Dictionary with removal result:
+        {
+            "symbol": str,
+            "status": str,  # "REMOVED", "NOT_FOUND", "ALREADY_INACTIVE"
+        }
+    """
+    if db_path is None:
+        db_path = DB_PATH
+
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+
+    try:
+        # Check if symbol exists
+        cursor.execute("SELECT active FROM watchlist WHERE symbol = ?", (symbol,))
+        result = cursor.fetchone()
+
+        if not result:
+            status = "NOT_FOUND"
+        elif result[0] == 0:
+            status = "ALREADY_INACTIVE"
+        else:
+            # Deactivate
+            cursor.execute("""
+                UPDATE watchlist
+                SET active = 0, last_updated = ?
+                WHERE symbol = ?
+            """, (now, symbol))
+            conn.commit()
+            status = "REMOVED"
+
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+    return {
+        "symbol": symbol,
+        "status": status
+    }
