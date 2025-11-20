@@ -7,7 +7,11 @@ Helps optimize analysis timing and avoid wasted API calls during off-hours.
 
 from datetime import datetime, time, timedelta
 from typing import Dict, Optional, Tuple
+from zoneinfo import ZoneInfo
 import warnings
+
+# Eastern Time zone
+ET = ZoneInfo("America/New_York")
 
 # US Stock Market Hours (Eastern Time)
 MARKET_OPEN_TIME = time(9, 30)  # 9:30 AM ET
@@ -53,7 +57,7 @@ def is_market_holiday(date: Optional[datetime] = None) -> bool:
         True if market is closed for holiday
     """
     if date is None:
-        date = datetime.now()
+        date = datetime.now(ET)
 
     date_str = date.strftime("%Y-%m-%d")
     return date_str in MARKET_HOLIDAYS_2025
@@ -70,7 +74,7 @@ def is_trading_day(date: Optional[datetime] = None) -> bool:
         True if market is open for trading
     """
     if date is None:
-        date = datetime.now()
+        date = datetime.now(ET)
 
     # Check if weekend
     if date.weekday() not in TRADING_DAYS:
@@ -94,7 +98,7 @@ def is_early_close_day(date: Optional[datetime] = None) -> bool:
         True if market closes early
     """
     if date is None:
-        date = datetime.now()
+        date = datetime.now(ET)
 
     date_str = date.strftime("%Y-%m-%d")
     return date_str in EARLY_CLOSE_DAYS_2025
@@ -121,7 +125,7 @@ def get_market_hours(date: Optional[datetime] = None) -> Dict:
         }
     """
     if date is None:
-        date = datetime.now()
+        date = datetime.now(ET)
 
     is_trading = is_trading_day(date)
     is_holiday = is_market_holiday(date)
@@ -146,17 +150,22 @@ def is_market_open(dt: Optional[datetime] = None) -> bool:
     Check if US stock market is currently open for regular trading.
 
     Args:
-        dt: Datetime to check (default: now in local time)
+        dt: Datetime to check (default: now in Eastern Time)
 
     Returns:
         True if market is open for regular trading session
 
     Note:
-        This function assumes the input datetime is in Eastern Time (ET).
-        For accurate results, convert your local time to ET first.
+        This function automatically converts to Eastern Time (ET).
     """
     if dt is None:
-        dt = datetime.now()
+        dt = datetime.now(ET)
+    elif dt.tzinfo is None:
+        # If naive datetime provided, assume it's ET
+        dt = dt.replace(tzinfo=ET)
+    else:
+        # Convert to ET if it's in a different timezone
+        dt = dt.astimezone(ET)
 
     # Check if trading day
     if not is_trading_day(dt):
@@ -174,13 +183,13 @@ def is_premarket(dt: Optional[datetime] = None) -> bool:
     Check if we're in pre-market hours (4:00 AM - 9:30 AM ET).
 
     Args:
-        dt: Datetime to check (default: now)
+        dt: Datetime to check (default: now in Eastern Time)
 
     Returns:
         True if in pre-market session
     """
     if dt is None:
-        dt = datetime.now()
+        dt = datetime.now(ET)
 
     if not is_trading_day(dt):
         return False
@@ -200,7 +209,7 @@ def is_afterhours(dt: Optional[datetime] = None) -> bool:
         True if in after-hours session
     """
     if dt is None:
-        dt = datetime.now()
+        dt = datetime.now(ET)
 
     if not is_trading_day(dt):
         return False
@@ -232,7 +241,7 @@ def get_market_session_info(dt: Optional[datetime] = None) -> Dict:
         }
     """
     if dt is None:
-        dt = datetime.now()
+        dt = datetime.now(ET)
 
     trading_day = is_trading_day(dt)
     holiday = is_market_holiday(dt)
@@ -276,7 +285,7 @@ def get_next_market_open(dt: Optional[datetime] = None) -> Tuple[Optional[dateti
         Tuple of (next_open_datetime, minutes_until_open)
     """
     if dt is None:
-        dt = datetime.now()
+        dt = datetime.now(ET)
 
     # If market is currently open, return now
     if is_market_open(dt):

@@ -14,7 +14,7 @@ import warnings
 
 # Data lake path
 DATA_LAKE = Path(__file__).parent.parent / "data_lake"
-CACHE_DB = DATA_LAKE / "market_data_cache.db"
+CACHE_DB = DATA_LAKE / "trades.db"  # Using unified trades.db for all data
 
 # Data quality thresholds
 DEFAULT_MAX_AGE_HOURS = 1  # Data older than 1 hour is stale during market hours
@@ -102,7 +102,7 @@ def validate_data_quality(
             cursor.execute("""
                 SELECT COUNT(*) as bar_count,
                        MAX(timestamp) as latest_timestamp
-                FROM market_data_cache
+                FROM market_data_bars
                 WHERE symbol = ? AND interval = ?
             """, (symbol, interval))
 
@@ -259,7 +259,7 @@ def get_data_health_report(symbols: List[str]) -> Dict:
             cursor.execute("""
                 SELECT COUNT(*) as bar_count,
                        MAX(timestamp) as latest_timestamp
-                FROM market_data_cache
+                FROM market_data_bars
                 WHERE symbol = ? AND interval = ?
             """, (symbol, interval))
 

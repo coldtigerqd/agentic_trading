@@ -3,6 +3,8 @@ ib-insync>=0.9.86
 jinja2>=3.1.0
 openai>=1.0.0  # OpenRouter uses OpenAI-compatible API
 scipy>=1.9.0
+httpx>=0.27.0  # ThetaData API client (streaming support)
+pytz>=2024.1  # Timezone handling for market hours
 
 # Testing
 pytest>=7.0.0

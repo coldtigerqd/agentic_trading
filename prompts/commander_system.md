@@ -72,19 +72,61 @@ from mcp__ibkr import get_positions
 positions = get_positions()
 print(f"Open Positions: {len(positions)}")
 
-# ===== NEW: Market Data Intelligence =====
-from skills import get_watchlist, get_latest_price, get_multi_timeframe_data
+# ===== CRITICAL: Fresh Data Acquisition via REST API =====
+from skills import (
+    sync_watchlist_incremental,
+    get_data_freshness_report,
+    get_watchlist,
+    get_latest_price,
+    get_multi_timeframe_data
+)
+from skills.thetadata_client import fetch_snapshot_with_rest
 
-# Get active watchlist
+# Step 1: Check if we need to sync fresh data
+sync_info = sync_watchlist_incremental(skip_if_market_closed=True)
+
+if sync_info['should_sync']:
+    print(f"📡 Syncing fresh data for {sync_info['total_symbols']} symbols...")
+
+    # Step 2: Fetch fresh snapshots using REST API (httpx)
+    from skills import process_snapshot_and_cache
+
+    for symbol in sync_info['symbols_to_sync']:
+        try:
+            # Use REST API to get real-time snapshot
+            snapshot = fetch_snapshot_with_rest(symbol)
+
+            # Cache to database (auto-deduplicates based on 5-min intervals)
+            result = process_snapshot_and_cache(symbol, snapshot)
+
+            if result['success'] and result['bars_added'] > 0:
+                print(f"  ✅ {symbol}: Fresh data @ {result['timestamp']}")
+            elif result['success']:
+                print(f"  ⏭️  {symbol}: Already cached")
+        except Exception as e:
+            print(f"  ⚠️  {symbol}: Sync failed - {e}")
+
+    print("✅ Data sync complete\n")
+else:
+    print(f"⏸️  {sync_info['message']}\n")
+
+# Step 3: Check data freshness
+freshness_report = get_data_freshness_report()
+stale_count = sum(1 for s in freshness_report['symbols'] if s['is_stale'])
+
+if stale_count > 0:
+    print(f"⚠️  Warning: {stale_count}/{len(freshness_report['symbols'])} symbols have stale data")
+    print(f"Consider running sync again or waiting for market open\n")
+
+# Step 4: Build market snapshot from cached data
 watchlist = get_watchlist()
-print(f"Monitoring {watchlist['total_count']} symbols")
+print(f"📊 Monitoring {watchlist['total_count']} symbols")
 
-# Build market snapshot
 market_snapshot = {}
 for symbol_info in watchlist['symbols']:
     symbol = symbol_info['symbol']
 
-    # Get latest price and freshness
+    # Read from cache (now with fresh data from REST API)
     latest = get_latest_price(symbol)
     if latest['success']:
         market_snapshot[symbol] = {
@@ -93,7 +135,7 @@ for symbol_info in watchlist['symbols']:
             'is_stale': latest['is_stale']
         }
 
-# Get multi-timeframe data for key symbols (e.g., SPY for market context)
+# Step 5: Get multi-timeframe data for market context (e.g., SPY)
 spy_mtf = get_multi_timeframe_data(
     symbol="SPY",
     intervals=["5min", "1h", "daily"],
@@ -102,11 +144,18 @@ spy_mtf = get_multi_timeframe_data(
 
 # Assess market context
 if spy_mtf['success']:
-    daily_bars = spy_mtf['timeframes']['daily']['bars']
-    recent_volatility = calculate_volatility(daily_bars[-20:])  # 20-day vol
-    trend = detect_trend(daily_bars[-30:])  # 30-day trend
+    from skills import calculate_historical_volatility, detect_trend
 
-    print(f"Market Context: Trend={trend}, Volatility={recent_volatility:.2%}")
+    daily_bars = spy_mtf['timeframes']['daily']['bars']
+
+    # Calculate 20-day historical volatility
+    closes = [bar['close'] for bar in daily_bars[-20:]]
+    recent_volatility = calculate_historical_volatility(closes, window=20)
+
+    # Detect 30-day trend
+    trend = detect_trend(daily_bars[-30:])
+
+    print(f"📈 Market Context: Trend={trend}, Volatility={recent_volatility:.2%}")
 ```
 
 ### 2. THINK: Invoke Swarm Intelligence
@@ -236,7 +285,56 @@ else:
 
 ## Skills Reference
 
-### Market Data Intelligence (NEW)
+### Real-Time Data Sync via REST API (CRITICAL)
+
+**ALWAYS use this workflow to ensure fresh market data:**
+
+```python
+from skills import (
+    sync_watchlist_incremental,
+    get_data_freshness_report,
+    process_snapshot_and_cache
+)
+from skills.thetadata_client import fetch_snapshot_with_rest
+
+# Step 1: Check if sync is needed
+sync_info = sync_watchlist_incremental(
+    skip_if_market_closed=True,  # Skip if market closed
+    max_symbols=None  # Sync all symbols (or limit for testing)
+)
+
+if sync_info['should_sync']:
+    # Step 2: Fetch and cache fresh data for each symbol
+    for symbol in sync_info['symbols_to_sync']:
+        # Uses httpx REST API (NOT requests, NOT MCP)
+        snapshot = fetch_snapshot_with_rest(symbol)
+
+        # Caches to SQLite with 5-minute interval deduplication
+        result = process_snapshot_and_cache(symbol, snapshot)
+
+        print(f"{symbol}: {'✅ New' if result['bars_added'] > 0 else '⏭️ Cached'}")
+
+# Step 3: Verify data freshness
+freshness_report = get_data_freshness_report()
+# Returns: {symbols: [{symbol, latest_timestamp, age_minutes, is_stale}]}
+
+stale_symbols = [s for s in freshness_report['symbols'] if s['is_stale']]
+if stale_symbols:
+    print(f"⚠️ {len(stale_symbols)} symbols have stale data (>15 min old)")
+```
+
+**Key Points:**
+- ✅ Uses `httpx.stream()` for REST API calls (stable, fast)
+- ✅ Auto-deduplicates based on 5-minute intervals
+- ✅ Handles market closed gracefully
+- ✅ Works independently of MCP servers
+
+---
+
+### Market Data Intelligence (Querying Cached Data)
+
+**Use these AFTER syncing fresh data via REST API:**
+
 ```python
 from skills import (
     get_historical_bars,
@@ -254,7 +352,7 @@ bars = get_historical_bars(
 )
 # Returns: {bars: List[Dict], bar_count: int, cache_hit: bool, query_time_ms: int}
 
-# Get latest price with staleness check
+# Get latest price with staleness check (reads from cache)
 latest = get_latest_price("NVDA")
 # Returns: {success: bool, price: float, age_seconds: int, is_stale: bool}
 
@@ -340,17 +438,47 @@ result = place_order_with_guard(
 ## Example Trading Cycle
 
 ```python
-# 1. SENSE
+from skills import (
+    sync_watchlist_incremental,
+    get_data_freshness_report,
+    process_snapshot_and_cache,
+    consult_swarm,
+    place_order_with_guard
+)
+from skills.thetadata_client import fetch_snapshot_with_rest
+from mcp__ibkr import get_account, get_positions
+
+# 1. SENSE: Sync Fresh Data
+sync_info = sync_watchlist_incremental()
+
+if sync_info['should_sync']:
+    print(f"📡 Syncing {sync_info['total_symbols']} symbols...")
+
+    for symbol in sync_info['symbols_to_sync']:
+        snapshot = fetch_snapshot_with_rest(symbol)  # REST API via httpx
+        result = process_snapshot_and_cache(symbol, snapshot)
+
+        if result['bars_added'] > 0:
+            print(f"  ✅ {symbol}: Fresh @ {result['timestamp']}")
+
+# Check data quality
+freshness = get_data_freshness_report()
+stale_count = sum(1 for s in freshness['symbols'] if s['is_stale'])
+
+if stale_count > 0:
+    print(f"⚠️ {stale_count} symbols have stale data - consider retry")
+
+# Query account and positions
 account = get_account()
 positions = get_positions()
 
-# 2. THINK
+# 2. THINK: Consult Swarm
 signals = consult_swarm(sector="TECH")
 
-# 3. DECIDE
+# 3. DECIDE: Filter by confidence
 high_confidence_signals = [s for s in signals if s['confidence'] >= 0.80]
 
-# 4. ACT
+# 4. ACT: Execute with safety validation
 for signal in high_confidence_signals[:2]:  # Limit to 2 trades per cycle
     result = place_order_with_guard(
         symbol=signal['target'],
@@ -364,8 +492,41 @@ for signal in high_confidence_signals[:2]:  # Limit to 2 trades per cycle
     print(f"Signal: {signal['target']} - {'✓ Executed' if result.success else '✗ Rejected'}")
 ```
 
+## ⚠️ CRITICAL: Data Fetching Do's and Don'ts
+
+### ✅ DO: Use REST API via httpx
+```python
+from skills import sync_watchlist_incremental, process_snapshot_and_cache
+from skills.thetadata_client import fetch_snapshot_with_rest
+
+# Correct: Use REST API client
+snapshot = fetch_snapshot_with_rest("AAPL")  # Uses httpx.stream()
+result = process_snapshot_and_cache("AAPL", snapshot)
+```
+
+### ❌ DON'T: Use MCP ThetaData Tools
+```python
+# ❌ WRONG: Do NOT use these MCP tools directly
+from mcp__ThetaData import stock_snapshot_quote  # DEPRECATED
+from mcp__ThetaData import stock_snapshot_ohlc   # DEPRECATED
+
+# These MCP tools are unreliable and may return stale/incorrect data
+```
+
+### Why REST API?
+- ✅ **Stable**: Direct HTTP with `httpx.stream()` (official recommendation)
+- ✅ **Fast**: No MCP protocol overhead
+- ✅ **Correct**: Fixed CSV field parsing matches ThetaData docs
+- ✅ **Reliable**: Proper error handling and retry logic
+- ❌ **MCP Version**: Uses old `requests`, has field parsing bugs
+
+**Rule**: ALWAYS sync fresh data via REST API before making trading decisions.
+
+---
+
 ## Remember
 
+- **Fresh Data First**: Always sync via REST API before trading analysis
 - **Safety first**: Every order goes through validation
 - **Auditability**: All decisions are logged with context
 - **Systematic**: Follow the workflow on every cycle

@@ -7,10 +7,14 @@ Supports 5-minute base granularity with on-the-fly aggregation to larger interva
 
 import sqlite3
 import json
+import pytz
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from pathlib import Path
+
+# Timezone constants
+ET = pytz.timezone('US/Eastern')
 
 
 # Database path
@@ -247,6 +251,12 @@ def detect_gaps(symbol: str) -> List[Dict[str, str]]:
     for i in range(len(timestamps) - 1):
         current = datetime.fromisoformat(timestamps[i])
         next_ts = datetime.fromisoformat(timestamps[i + 1])
+
+        # Ensure timezone consistency
+        if current.tzinfo is None:
+            current = ET.localize(current)
+        if next_ts.tzinfo is None:
+            next_ts = ET.localize(next_ts)
 
         # Expected: 5 minutes apart during trading hours
         # Simplified: flag if gap > 10 minutes (allows for market close)

@@ -63,6 +63,12 @@ from .watchlist_manager import (
     get_symbol_sector,
     get_current_watchlist
 )
+from .data_sync import (
+    sync_watchlist_incremental,
+    process_snapshot_and_cache,
+    get_data_freshness_report,
+    get_watchlist_symbols
+)
 
 __all__ = [
     # Swarm Intelligence
@@ -115,7 +121,12 @@ __all__ = [
     "update_watchlist",
     "get_watchlist_performance_report",
     "get_symbol_sector",
-    "get_current_watchlist"
+    "get_current_watchlist",
+    # Data Sync
+    "sync_watchlist_incremental",
+    "process_snapshot_and_cache",
+    "get_data_freshness_report",
+    "get_watchlist_symbols"
 ]
 
 __version__ = "1.0.0"
