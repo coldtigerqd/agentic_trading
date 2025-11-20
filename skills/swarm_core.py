@@ -1,8 +1,7 @@
 """
-Swarm Intelligence Core - Concurrent agent orchestration.
+蜂群智能核心 - 并发智能体协调。
 
-This is the recursive intelligence engine that executes multiple strategy
-instances concurrently and aggregates their signals.
+这是递归智能引擎，并发执行多个策略实例并聚合其信号。
 """
 
 import asyncio
@@ -17,7 +16,7 @@ from data_lake.snapshot_manager import save_snapshot, update_snapshot_response
 from skills.signal_enrichment import enrich_signal, validate_enriched_signal
 
 
-# Paths
+# 路径
 SWARM_BASE = Path(__file__).parent.parent / "swarm_intelligence"
 TEMPLATES_DIR = SWARM_BASE / "templates"
 INSTANCES_DIR = SWARM_BASE / "active_instances"
@@ -25,26 +24,26 @@ INSTANCES_DIR = SWARM_BASE / "active_instances"
 
 @dataclass
 class Signal:
-    """Trading signal from swarm instance."""
+    """蜂群实例的交易信号"""
     instance_id: str
     template_used: str
     target: str
-    signal: str  # e.g., "SHORT_PUT_SPREAD", "LONG_CALL", "NO_TRADE"
+    signal: str  # 例如 "SHORT_PUT_SPREAD", "LONG_CALL", "NO_TRADE"
     params: Dict[str, Any]
-    confidence: float  # 0.0 to 1.0
+    confidence: float  # 0.0 到 1.0
     reasoning: str
 
 
 def load_instances(sector_filter: Optional[str] = None) -> List[Dict]:
     """
-    Load active instance configurations from JSON files.
+    从 JSON 文件加载活跃实例配置。
 
-    Args:
-        sector_filter: Filter by sector ("ALL", "TECH", "FINANCE", etc.)
-                       "ALL" or None returns all instances
+    参数:
+        sector_filter: 按行业过滤（"ALL", "TECH", "FINANCE" 等）
+                       "ALL" 或 None 返回所有实例
 
-    Returns:
-        List of instance configuration dictionaries
+    返回:
+        实例配置字典列表
     """
     if not INSTANCES_DIR.exists():
         return []
@@ -55,7 +54,7 @@ def load_instances(sector_filter: Optional[str] = None) -> List[Dict]:
             with open(json_file, 'r') as f:
                 instance = json.load(f)
 
-            # Apply sector filter
+            # 应用行业过滤器
             if sector_filter and sector_filter != "ALL":
                 instance_sector = instance.get("sector", "").upper()
                 if instance_sector != sector_filter.upper():
@@ -64,7 +63,7 @@ def load_instances(sector_filter: Optional[str] = None) -> List[Dict]:
             instances.append(instance)
 
         except json.JSONDecodeError as e:
-            print(f"Warning: Failed to load instance {json_file}: {e}")
+            print(f"警告：加载实例 {json_file} 失败: {e} (JSON_DECODE_ERROR)")
             continue
 
     return instances
@@ -72,43 +71,43 @@ def load_instances(sector_filter: Optional[str] = None) -> List[Dict]:
 
 def load_template(template_name: str) -> str:
     """
-    Load strategy template from file.
+    从文件加载策略模板。
 
-    Args:
-        template_name: Template filename (e.g., "vol_sniper.md")
+    参数:
+        template_name: 模板文件名（例如 "vol_sniper.md"）
 
-    Returns:
-        Template content as string
+    返回:
+        模板内容字符串
 
-    Raises:
-        FileNotFoundError: If template doesn't exist
+    异常:
+        FileNotFoundError: 如果模板不存在
     """
     template_path = TEMPLATES_DIR / template_name
 
     if not template_path.exists():
-        raise FileNotFoundError(f"Template not found: {template_name}")
+        raise FileNotFoundError(f"模板未找到: {template_name} (TEMPLATE_NOT_FOUND)")
 
-    with open(template_path, 'r') as f:
+    with open(template_path, 'r', encoding='utf-8') as f:
         return f.read()
 
 
 def render_template(template_content: str, parameters: Dict[str, Any], market_data: Dict[str, Any] = None) -> str:
     """
-    Render Jinja2 template with parameters and market data.
+    使用参数和市场数据渲染 Jinja2 模板。
 
-    Args:
-        template_content: Template string with Jinja2 placeholders
-        parameters: Dictionary of parameters to inject
-        market_data: Market data snapshot to inject (optional)
+    参数:
+        template_content: 包含 Jinja2 占位符的模板字符串
+        parameters: 要注入的参数字典
+        market_data: 要注入的市场数据快照（可选）
 
-    Returns:
-        Rendered template string
+    返回:
+        渲染后的模板字符串
     """
-    # Use StrictUndefined to catch missing template variables early
+    # 使用 StrictUndefined 以尽早捕获缺失的模板变量
     env = Environment(undefined=StrictUndefined)
     template = env.from_string(template_content)
 
-    # Merge parameters and market_data for template context
+    # 合并 parameters 和 market_data 作为模板上下文
     context = {**parameters}
     if market_data:
         context['market_data'] = market_data
@@ -122,64 +121,62 @@ async def execute_single_instance(
     timeout: int = 20
 ) -> Optional[Signal]:
     """
-    Execute a single swarm instance (async).
+    执行单个蜂群实例（异步）。
 
-    This function:
-    1. Loads and renders template
-    2. Saves input snapshot
-    3. Calls LLM API
-    4. Parses response into Signal
-    5. Updates snapshot with response
+    此函数：
+    1. 加载并渲染模板
+    2. 保存输入快照
+    3. 调用 LLM API
+    4. 解析响应为 Signal
+    5. 更新快照的响应
 
-    Args:
-        instance: Instance configuration
-        market_data: Market data snapshot
-        timeout: Timeout in seconds
+    参数:
+        instance: 实例配置
+        market_data: 市场数据快照
+        timeout: 超时时间（秒）
 
-    Returns:
-        Signal object or None if execution failed
+    返回:
+        Signal 对象，执行失败返回 None
     """
     instance_id = instance["id"]
     template_name = instance["template"]
     parameters = instance.get("parameters", {})
 
     try:
-        # Load and render template
+        # 加载并渲染模板
         template_content = load_template(template_name)
-        print(f"[{instance_id}] Template loaded: {template_name}")
+        print(f"[{instance_id}] 模板已加载: {template_name}")
 
         rendered_prompt = render_template(template_content, parameters, market_data)
-        print(f"[{instance_id}] Template rendered successfully")
+        print(f"[{instance_id}] 模板渲染成功")
 
-        # Save input snapshot BEFORE LLM call
+        # 在 LLM 调用之前保存输入快照
         timestamp = datetime.now().isoformat()
-        print(f"[{instance_id}] Saving snapshot...")
+        print(f"[{instance_id}] 正在保存快照...")
         snapshot_id = save_snapshot(
             instance_id=instance_id,
             template_name=template_name,
             rendered_prompt=rendered_prompt,
             market_data=market_data,
-            agent_response=None,  # Will update after LLM call
+            agent_response=None,  # LLM 调用后更新
             timestamp=timestamp
         )
-        print(f"[{instance_id}] Snapshot saved: {snapshot_id}")
+        print(f"[{instance_id}] 快照已保存: {snapshot_id}")
 
-        # Execute LLM API call (with timeout)
-        # TODO: Replace with actual Anthropic API call
-        # For now, simulate response
+        # 执行 LLM API 调用（带超时）
         try:
             response = await asyncio.wait_for(
                 call_llm_api(rendered_prompt, market_data),
                 timeout=timeout
             )
         except asyncio.TimeoutError:
-            print(f"Warning: Instance {instance_id} timed out after {timeout}s")
+            print(f"警告：实例 {instance_id} 在 {timeout}秒后超时 (TIMEOUT)")
             return None
 
-        # Parse response into Signal
+        # 解析响应为 Signal
         signal = parse_signal_response(response, instance_id, template_name)
 
-        # Update snapshot with response
+        # 更新快照的响应
         update_snapshot_response(snapshot_id, {
             "raw_response": response,
             "parsed_signal": signal.__dict__ if signal else None
@@ -188,35 +185,35 @@ async def execute_single_instance(
         return signal
 
     except FileNotFoundError as e:
-        print(f"Warning: {e}")
+        print(f"警告：{e}")
         return None
     except Exception as e:
-        print(f"Error executing instance {instance_id}: {e}")
+        print(f"执行实例 {instance_id} 时出错: {e} (EXECUTION_ERROR)")
         return None
 
 
 async def call_llm_api(prompt: str, market_data: Dict) -> Dict:
     """
-    Call LLM API via OpenRouter to get trading signal.
+    通过 OpenRouter 调用 LLM API 以获取交易信号。
 
-    Uses Gemini 2.5 Flash for fast, cost-effective concurrent execution.
+    使用 Gemini 2.5 Flash 进行快速、经济高效的并发执行。
 
-    Args:
-        prompt: Rendered prompt
-        market_data: Market data context
+    参数:
+        prompt: 渲染后的提示词
+        market_data: 市场数据上下文
 
-    Returns:
-        LLM response dictionary (parsed from JSON response)
+    返回:
+        LLM 响应字典（从 JSON 响应解析）
     """
     import os
     from openai import AsyncOpenAI
 
-    # Get API key from environment
+    # 从环境变量获取 API 密钥
     api_key = os.getenv("OPENROUTER_API_KEY")
 
     if not api_key:
-        print("Warning: OPENROUTER_API_KEY not set, using mock response")
-        # Fallback to mock for testing
+        print("警告：未设置 OPENROUTER_API_KEY，使用模拟响应 (NO_API_KEY)")
+        # 回退到模拟用于测试
         await asyncio.sleep(0.5)
         return {
             "signal": "SHORT_PUT_SPREAD",
@@ -227,19 +224,19 @@ async def call_llm_api(prompt: str, market_data: Dict) -> Dict:
                 "expiry": "20251128"
             },
             "confidence": 0.75,
-            "reasoning": "Elevated IV with neutral sentiment suggests premium selling opportunity."
+            "reasoning": "IV 升高且情绪中性，表明存在卖出权利金的机会。"
         }
 
     try:
-        # Initialize OpenRouter client (OpenAI-compatible)
+        # 初始化 OpenRouter 客户端（OpenAI 兼容）
         client = AsyncOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=api_key
         )
 
-        # Call Gemini 2.0 Flash via OpenRouter
+        # 通过 OpenRouter 调用 Gemini 2.0 Flash
         completion = await client.chat.completions.create(
-            model="google/gemini-2.5-flash",  # Free tier, very fast
+            model="google/gemini-2.5-flash",  # 免费层，速度非常快
             messages=[
                 {
                     "role": "user",
@@ -249,54 +246,54 @@ async def call_llm_api(prompt: str, market_data: Dict) -> Dict:
             temperature=0.7,
             max_tokens=1000,
             extra_headers={
-                "HTTP-Referer": "https://github.com/agentic-alphahive",  # Optional
-                "X-Title": "Agentic AlphaHive Runtime"  # Optional
+                "HTTP-Referer": "https://github.com/agentic-alphahive",  # 可选
+                "X-Title": "Agentic AlphaHive Runtime"  # 可选
             }
         )
 
-        # Extract response content
+        # 提取响应内容
         response_text = completion.choices[0].message.content
 
-        # Strip markdown code blocks if present
-        # Gemini often wraps JSON in ```json ... ```
+        # 去除 markdown 代码块（如果存在）
+        # Gemini 经常将 JSON 包装在 ```json ... ``` 中
         response_text = response_text.strip()
         if response_text.startswith("```"):
-            # Remove opening ```json or ```
+            # 移除开头的 ```json 或 ```
             lines = response_text.split("\n")
             if lines[0].startswith("```"):
                 lines = lines[1:]
-            # Remove closing ```
+            # 移除结尾的 ```
             if lines and lines[-1].strip() == "```":
                 lines = lines[:-1]
             response_text = "\n".join(lines).strip()
 
-        # Parse JSON response
+        # 解析 JSON 响应
         import json
         response_json = json.loads(response_text)
 
         return response_json
 
     except json.JSONDecodeError as e:
-        print(f"Warning: Failed to parse LLM response as JSON: {e}")
-        print(f"Raw response: {response_text[:200]}")
+        print(f"警告：解析 LLM 响应为 JSON 失败: {e} (JSON_PARSE_ERROR)")
+        print(f"原始响应: {response_text[:200]}")
         return None
 
     except Exception as e:
-        print(f"Error calling OpenRouter API: {e}")
+        print(f"调用 OpenRouter API 时出错: {e} (API_CALL_ERROR)")
         return None
 
 
 def parse_signal_response(response: Dict, instance_id: str, template_name: str) -> Optional[Signal]:
     """
-    Parse LLM response into Signal object.
+    将 LLM 响应解析为 Signal 对象。
 
-    Args:
-        response: LLM API response
-        instance_id: Instance identifier
-        template_name: Template used
+    参数:
+        response: LLM API 响应
+        instance_id: 实例标识符
+        template_name: 使用的模板
 
-    Returns:
-        Signal object or None if parsing failed
+    返回:
+        Signal 对象，解析失败返回 None
     """
     try:
         return Signal(
@@ -309,24 +306,23 @@ def parse_signal_response(response: Dict, instance_id: str, template_name: str) 
             reasoning=response.get("reasoning", "")
         )
     except (KeyError, ValueError) as e:
-        print(f"Warning: Failed to parse signal from {instance_id}: {e}")
+        print(f"警告：解析来自 {instance_id} 的信号失败: {e} (SIGNAL_PARSE_ERROR)")
         return None
 
 
 def deduplicate_signals(signals: List[Signal]) -> List[Signal]:
     """
-    Remove duplicate signals targeting the same symbol with same strategy.
+    移除针对相同标的使用相同策略的重复信号。
 
-    When multiple instances produce the same signal, keep the one with
-    highest confidence.
+    当多个实例产生相同信号时，保留置信度最高的那个。
 
-    Args:
-        signals: List of Signal objects
+    参数:
+        signals: Signal 对象列表
 
-    Returns:
-        Deduplicated list of signals
+    返回:
+        去重后的信号列表
     """
-    # Group by (target, signal)
+    # 按 (target, signal) 分组
     signal_groups = {}
     for signal in signals:
         key = (signal.target, signal.signal)
@@ -334,7 +330,7 @@ def deduplicate_signals(signals: List[Signal]) -> List[Signal]:
             signal_groups[key] = []
         signal_groups[key].append(signal)
 
-    # Keep highest confidence signal from each group
+    # 从每组中保留最高置信度的信号
     deduplicated = []
     for key, group in signal_groups.items():
         best_signal = max(group, key=lambda s: s.confidence)
@@ -349,34 +345,34 @@ async def execute_swarm_concurrent(
     max_concurrent: int = 50
 ) -> List[Signal]:
     """
-    Execute multiple swarm instances concurrently.
+    并发执行多个蜂群实例。
 
-    Args:
-        instances: List of instance configurations
-        market_data: Market data snapshot
-        max_concurrent: Maximum concurrent LLM API calls
+    参数:
+        instances: 实例配置列表
+        market_data: 市场数据快照
+        max_concurrent: 最大并发 LLM API 调用数
 
-    Returns:
-        List of Signal objects from successful executions
+    返回:
+        成功执行的 Signal 对象列表
     """
-    # Create semaphore to limit concurrency
+    # 创建信号量以限制并发
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def execute_with_semaphore(instance):
         async with semaphore:
             return await execute_single_instance(instance, market_data)
 
-    # Execute all instances concurrently
+    # 并发执行所有实例
     tasks = [execute_with_semaphore(inst) for inst in instances]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Filter out None and exception results
+    # 过滤掉 None 和异常结果
     signals = []
     for result in results:
         if isinstance(result, Signal):
             signals.append(result)
         elif isinstance(result, Exception):
-            print(f"Warning: Instance failed with exception: {result}")
+            print(f"警告：实例执行失败并抛出异常: {result} (INSTANCE_EXCEPTION)")
 
     return signals
 
@@ -388,18 +384,18 @@ def consult_swarm(
     skip_data_validation: bool = False
 ) -> List[Dict]:
     """
-    Execute swarm intelligence analysis.
+    执行蜂群智能分析。
 
-    This is the main entry point for Commander to invoke the swarm.
+    这是 Commander 调用蜂群的主要入口点。
 
-    Args:
-        sector: Filter instances by sector ("ALL", "TECH", "FINANCE", etc.)
-        market_data: Current market snapshot (if None, fetches fresh data)
-        max_concurrent: Maximum concurrent LLM API calls
-        skip_data_validation: Skip data quality validation (NOT RECOMMENDED)
+    参数:
+        sector: 按行业过滤实例（"ALL", "TECH", "FINANCE" 等）
+        market_data: 当前市场快照（如果为 None，则获取最新数据）
+        max_concurrent: 最大并发 LLM API 调用数
+        skip_data_validation: 跳过数据质量验证（不推荐）
 
-    Returns:
-        List of signal dictionaries with structure:
+    返回:
+        信号字典列表，结构如下:
         [
             {
                 "instance_id": "tech_aggressive",
@@ -413,79 +409,79 @@ def consult_swarm(
             ...
         ]
 
-    Example:
+    示例:
         >>> signals = consult_swarm(sector="TECH")
-        >>> print(f"Received {len(signals)} signals")
-        Received 3 signals
+        >>> print(f"收到 {len(signals)} 个信号")
+        收到 3 个信号
     """
-    # Load active instances
+    # 加载活跃实例
     instances = load_instances(sector_filter=sector)
 
     if not instances:
-        print(f"Warning: No active instances found for sector '{sector}'")
+        print(f"警告：未找到行业 '{sector}' 的活跃实例 (NO_INSTANCES)")
         return []
 
-    # Fetch market data if not provided
+    # 如果未提供市场数据则获取
     if market_data is None:
         market_data = fetch_market_snapshot()
 
-    # === DATA QUALITY PRE-FLIGHT CHECK ===
+    # === 数据质量飞行前检查 ===
     if not skip_data_validation:
         from skills.data_quality import validate_data_quality, auto_trigger_backfill
 
-        # Extract symbols from market_data snapshot
+        # 从 market_data 快照中提取标的
         symbols = []
         if market_data and 'snapshot' in market_data:
             symbols = list(market_data['snapshot'].keys())
 
-        # Also collect symbols from instance symbol pools
+        # 同时收集实例标的池中的标的
         for instance in instances:
             symbol_pool = instance.get('parameters', {}).get('symbol_pool', [])
             symbols.extend(symbol_pool)
 
-        # Remove duplicates
+        # 去重
         symbols = list(set(symbols))
 
         if symbols:
-            print(f"\n=== DATA QUALITY PRE-FLIGHT CHECK ===")
-            print(f"Validating data for {len(symbols)} symbols...")
+            print(f"\n=== 数据质量飞行前检查 ===")
+            print(f"正在验证 {len(symbols)} 个标的的数据...")
 
-            # Validate data quality
+            # 验证数据质量
             validation = validate_data_quality(
                 symbols=symbols,
-                min_daily_bars=20,  # Reduced from 30 for more lenient check
+                min_daily_bars=20,  # 从30降低以更宽松的检查
                 min_hourly_bars=30,
                 min_5min_bars=200,
-                max_age_hours=8,  # Allow slightly stale data
-                require_all_intervals=False  # Be lenient
+                max_age_hours=8,  # 允许稍微过时的数据
+                require_all_intervals=False  # 宽松要求
             )
 
             if not validation['valid']:
-                print(f"\n⚠️  DATA QUALITY VALIDATION FAILED")
-                print(f"Summary: {validation['summary']}")
-                print(f"\nIssues found:")
+                print(f"\n⚠️  数据质量验证失败 (DATA_QUALITY_FAILED)")
+                print(f"摘要: {validation['summary']}")
+                print(f"\n发现的问题:")
 
-                # Group issues by severity
+                # 按严重程度分组问题
                 critical_issues = [i for i in validation['issues'] if i['severity'] == 'CRITICAL']
                 high_issues = [i for i in validation['issues'] if i['severity'] == 'HIGH']
 
                 if critical_issues:
-                    print(f"  CRITICAL ({len(critical_issues)}):")
-                    for issue in critical_issues[:5]:  # Show first 5
+                    print(f"  严重 ({len(critical_issues)}):")
+                    for issue in critical_issues[:5]:  # 显示前5个
                         print(f"    - {issue['symbol']}: {issue['issue']} ({issue['detail']})")
 
                 if high_issues:
-                    print(f"  HIGH ({len(high_issues)}):")
-                    for issue in high_issues[:3]:  # Show first 3
+                    print(f"  高 ({len(high_issues)}):")
+                    for issue in high_issues[:3]:  # 显示前3个
                         print(f"    - {issue['symbol']}: {issue['issue']} ({issue['detail']})")
 
-                print(f"\nRecommendations:")
+                print(f"\n建议:")
                 for rec in validation['recommendations']:
                     print(f"  → {rec}")
 
-                # Return NO_TRADE signals with data quality explanation
-                print(f"\n✗ ABORTING SWARM CONSULTATION - Data quality insufficient")
-                print(f"  Returning NO_TRADE signals due to data quality issues\n")
+                # 返回带有数据质量说明的 NO_TRADE 信号
+                print(f"\n✗ 终止蜂群咨询 - 数据质量不足")
+                print(f"  由于数据质量问题返回 NO_TRADE 信号\n")
 
                 return [{
                     "instance_id": "DATA_QUALITY_CHECK",
@@ -495,28 +491,28 @@ def consult_swarm(
                     "params": {},
                     "confidence": 0.0,
                     "reasoning": (
-                        f"Data quality validation failed: {validation['summary']}. "
-                        f"Found {len(critical_issues)} critical and {len(high_issues)} high severity issues. "
-                        f"Recommendations: {'; '.join(validation['recommendations'])}"
+                        f"数据质量验证失败: {validation['summary']}。"
+                        f"发现 {len(critical_issues)} 个严重和 {len(high_issues)} 个高严重度问题。"
+                        f"建议: {'; '.join(validation['recommendations'])}"
                     )
                 }]
             else:
-                print(f"✓ Data quality validation PASSED")
-                print(f"  {len(validation['symbols_passed'])}/{len(symbols)} symbols have sufficient data\n")
+                print(f"✓ 数据质量验证通过")
+                print(f"  {len(validation['symbols_passed'])}/{len(symbols)} 个标的有充足数据\n")
         else:
-            print(f"⚠️  No symbols provided for data quality validation")
-            print(f"  Proceeding with caution - swarm may fail due to missing data\n")
+            print(f"⚠️  未提供标的用于数据质量验证 (NO_SYMBOLS)")
+            print(f"  谨慎继续 - 蜂群可能因缺少数据而失败\n")
 
-    # Execute swarm concurrently
+    # 并发执行蜂群
     loop = asyncio.get_event_loop()
     signals = loop.run_until_complete(
         execute_swarm_concurrent(instances, market_data, max_concurrent)
     )
 
-    # Deduplicate signals
+    # 去重信号
     signals = deduplicate_signals(signals)
 
-    # Convert Signal objects to dictionaries
+    # 将 Signal 对象转换为字典
     signal_dicts = [
         {
             "instance_id": s.instance_id,
@@ -530,17 +526,17 @@ def consult_swarm(
         for s in signals
     ]
 
-    # Enrich signals with executable legs (if not already present)
+    # 用可执行的腿丰富信号（如果尚未存在）
     enriched_signals = []
     for sig in signal_dicts:
         enriched = enrich_signal(sig, market_data)
 
-        # Validate enrichment
+        # 验证丰富化
         if validate_enriched_signal(enriched):
             enriched_signals.append(enriched)
         else:
-            print(f"Warning: Signal from {sig['instance_id']} failed validation after enrichment")
-            # Still include it, but mark as incomplete
+            print(f"警告：来自 {sig['instance_id']} 的信号在丰富化后验证失败 (ENRICHMENT_VALIDATION_FAILED)")
+            # 仍然包含它，但标记为不完整
             enriched_signals.append(enriched)
 
     return enriched_signals
@@ -548,18 +544,18 @@ def consult_swarm(
 
 def fetch_market_snapshot() -> Dict[str, Any]:
     """
-    Fetch current market data snapshot.
+    获取当前市场数据快照。
 
-    TODO: Integrate with ThetaData MCP server to get real market data.
+    TODO: 集成 ThetaData MCP 服务器以获取真实市场数据。
 
-    Returns:
-        Market data dictionary
+    返回:
+        市场数据字典
     """
-    # Placeholder for market data fetching
-    # In production, call ThetaData MCP server:
-    # - Get quotes for symbol pool
-    # - Get options chains
-    # - Calculate IV rank/percentile
+    # 市场数据获取的占位符
+    # 在生产环境中，调用 ThetaData MCP 服务器：
+    # - 获取标的池的报价
+    # - 获取期权链
+    # - 计算 IV rank/百分位
     return {
         "timestamp": datetime.now().isoformat(),
         "symbols": ["AAPL", "NVDA", "AMD"],
