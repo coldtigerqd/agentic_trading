@@ -1,6 +1,6 @@
 {
-  "template": "correlation_arbitrage",
-  "name": "correlation_arb_tech_pairs",
+  "id": "correlation_arb_tech_pairs",
+  "template": "correlation_arbitrage.md",
   "description": "Statistical arbitrage on correlated tech stock pairs using z-score divergence",
   "priority": 8,
   "enabled": true,
