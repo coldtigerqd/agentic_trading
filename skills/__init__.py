@@ -56,6 +56,13 @@ from .technical_indicators import (
     calculate_obv,
     calculate_vwap
 )
+from .watchlist_manager import (
+    calculate_symbol_score,
+    update_watchlist,
+    get_watchlist_performance_report,
+    get_symbol_sector,
+    get_current_watchlist
+)
 
 __all__ = [
     # Swarm Intelligence
@@ -102,7 +109,13 @@ __all__ = [
     "calculate_pivot_points",
     # Technical Indicators - Volume
     "calculate_obv",
-    "calculate_vwap"
+    "calculate_vwap",
+    # Watchlist Manager
+    "calculate_symbol_score",
+    "update_watchlist",
+    "get_watchlist_performance_report",
+    "get_symbol_sector",
+    "get_current_watchlist"
 ]
 
 __version__ = "1.0.0"
