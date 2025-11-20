@@ -50,6 +50,42 @@ print(f"Buying Power: ${account['BuyingPower']}")
 from mcp__ibkr import get_positions
 positions = get_positions()
 print(f"Open Positions: {len(positions)}")
+
+# ===== NEW: Market Data Intelligence =====
+from skills import get_watchlist, get_latest_price, get_multi_timeframe_data
+
+# Get active watchlist
+watchlist = get_watchlist()
+print(f"Monitoring {watchlist['total_count']} symbols")
+
+# Build market snapshot
+market_snapshot = {}
+for symbol_info in watchlist['symbols']:
+    symbol = symbol_info['symbol']
+
+    # Get latest price and freshness
+    latest = get_latest_price(symbol)
+    if latest['success']:
+        market_snapshot[symbol] = {
+            'price': latest['price'],
+            'age_seconds': latest['age_seconds'],
+            'is_stale': latest['is_stale']
+        }
+
+# Get multi-timeframe data for key symbols (e.g., SPY for market context)
+spy_mtf = get_multi_timeframe_data(
+    symbol="SPY",
+    intervals=["5min", "1h", "daily"],
+    lookback_days=30
+)
+
+# Assess market context
+if spy_mtf['success']:
+    daily_bars = spy_mtf['timeframes']['daily']['bars']
+    recent_volatility = calculate_volatility(daily_bars[-20:])  # 20-day vol
+    trend = detect_trend(daily_bars[-30:])  # 30-day trend
+
+    print(f"Market Context: Trend={trend}, Volatility={recent_volatility:.2%}")
 ```
 
 ### 2. THINK: Invoke Swarm Intelligence
@@ -58,7 +94,18 @@ print(f"Open Positions: {len(positions)}")
 # Consult the swarm for trading signals
 from skills import consult_swarm
 
-signals = consult_swarm(sector="ALL")
+# Pass market data to swarm for informed analysis
+signals = consult_swarm(
+    sector="ALL",
+    market_data={
+        "snapshot": market_snapshot,  # Latest prices from watchlist
+        "context": {
+            "spy_trend": trend if spy_mtf['success'] else None,
+            "market_volatility": recent_volatility if spy_mtf['success'] else None,
+            "spy_mtf": spy_mtf  # Full multi-timeframe data for SPY
+        }
+    }
+)
 print(f"Received {len(signals)} signals from swarm")
 
 # Signals structure:
@@ -168,13 +215,51 @@ else:
 
 ## Skills Reference
 
+### Market Data Intelligence (NEW)
+```python
+from skills import (
+    get_historical_bars,
+    get_latest_price,
+    get_multi_timeframe_data,
+    add_to_watchlist,
+    get_watchlist
+)
+
+# Get historical bars for technical analysis
+bars = get_historical_bars(
+    symbol="AAPL",
+    interval="5min",  # "5min", "15min", "1h", "daily"
+    lookback_days=30
+)
+# Returns: {bars: List[Dict], bar_count: int, cache_hit: bool, query_time_ms: int}
+
+# Get latest price with staleness check
+latest = get_latest_price("NVDA")
+# Returns: {success: bool, price: float, age_seconds: int, is_stale: bool}
+
+# Multi-timeframe analysis (most efficient)
+mtf_data = get_multi_timeframe_data(
+    symbol="SPY",
+    intervals=["5min", "1h", "daily"],
+    lookback_days=30
+)
+# Returns: {timeframes: {"5min": {bars, bar_count}, "1h": {...}, "daily": {...}}}
+
+# Manage watchlist
+watchlist = get_watchlist()  # Get all monitored symbols
+add_to_watchlist("MSFT", priority=7, notes="Tech stock")  # Add new symbol
+```
+
 ### Swarm Intelligence
 ```python
 from skills import consult_swarm
 
 signals = consult_swarm(
     sector="ALL",  # or "TECH", "FINANCE", etc.
-    market_data=None,  # Fetches fresh if None
+    market_data={
+        "snapshot": {...},  # Latest prices
+        "context": {...}    # Market trend, volatility
+    },
     max_concurrent=50
 )
 ```

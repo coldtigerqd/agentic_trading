@@ -19,19 +19,50 @@ You have been configured with the following parameters:
 
 For each symbol in your pool, evaluate:
 
-1. **IV Rank/Percentile**
+1. **Historical Context Analysis (NEW - Use Market Data Skills)**
+   - Analyze 30-day price action using historical bars
+   - Calculate support/resistance levels from recent highs/lows
+   - Identify trend direction (uptrend/downtrend/range-bound)
+   - Measure recent volatility to contextualize current IV
+
+   ```python
+   # Example: Get multi-timeframe data for technical analysis
+   # Note: In actual runtime, access via market_data parameter
+   from skills import get_multi_timeframe_data
+
+   mtf = get_multi_timeframe_data(
+       symbol="{{ symbol_pool[0] }}",  # First symbol in pool
+       intervals=["5min", "1h", "daily"],
+       lookback_days=30
+   )
+
+   # Analyze daily bars for trend
+   daily_bars = mtf['timeframes']['daily']['bars']
+   recent_high = max([b['high'] for b in daily_bars[-20:]])
+   recent_low = min([b['low'] for b in daily_bars[-20:]])
+   current_price = daily_bars[-1]['close']
+
+   # Calculate position in range
+   price_position = (current_price - recent_low) / (recent_high - recent_low)
+   # If price_position > 0.8: near resistance (favor call spreads)
+   # If price_position < 0.2: near support (favor put spreads)
+   ```
+
+2. **IV Rank/Percentile**
    - Current IV rank must be >= {{ min_iv_rank }}%
    - Look for IV expansion without fundamental justification
+   - Compare to historical volatility from cached data
 
-2. **Delta Management**
+3. **Delta Management**
    - Total position delta should not exceed {{ max_delta_exposure }}
    - Prefer delta-neutral or slightly negative delta positions
+   - Use price levels from historical data to select strikes
 
-3. **Sentiment Check**
+4. **Sentiment Check**
    - Filter: {{ sentiment_filter }}
    - Avoid extreme bullish/bearish sentiment that might drive IV higher
 
-4. **Earnings Risk**
+5. **Earnings Risk**
    - Avoid positions with earnings announcements within expiration period
    - Check economic calendar for major catalysts
 

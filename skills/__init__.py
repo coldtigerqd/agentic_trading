@@ -24,6 +24,14 @@ from .mcp_bridge import (
     fetch_market_data_for_symbols,
     find_target_expiration
 )
+from .market_data import (
+    get_historical_bars,
+    get_latest_price,
+    add_to_watchlist,
+    remove_from_watchlist,
+    get_watchlist,
+    get_multi_timeframe_data
+)
 
 __all__ = [
     "consult_swarm",
@@ -38,7 +46,13 @@ __all__ = [
     "OrderResult",
     "execute_order_with_ibkr",
     "fetch_market_data_for_symbols",
-    "find_target_expiration"
+    "find_target_expiration",
+    "get_historical_bars",
+    "get_latest_price",
+    "add_to_watchlist",
+    "remove_from_watchlist",
+    "get_watchlist",
+    "get_multi_timeframe_data"
 ]
 
 __version__ = "1.0.0"

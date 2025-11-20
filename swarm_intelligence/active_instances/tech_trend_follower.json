@@ -1,0 +1,18 @@
+{
+  "id": "tech_trend_follower",
+  "template": "trend_scout.md",
+  "parameters": {
+    "symbol_pool": ["AAPL", "NVDA", "MSFT", "GOOGL", "META"],
+    "trend_strength_threshold": 0.7,
+    "min_trend_days": 10,
+    "rsi_low": 40,
+    "rsi_high": 50,
+    "volume_multiplier": 1.5,
+    "min_rr_ratio": 2.0
+  },
+  "evolution_history": {
+    "generation": 1,
+    "last_mutated": "2025-11-20",
+    "notes": "Initial configuration - Tech sector trend following with 2:1 R:R minimum"
+  }
+}

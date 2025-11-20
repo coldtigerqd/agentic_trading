@@ -105,6 +105,60 @@ agentic-alphahive/
   * **心跳监测**: 监控 `main_loop.py` 的活跃状态，若 AI 进程死锁超过 60 秒，发送报警。
   * **资产熔断**: 轮询账户 `NetLiquidation`。若当日回撤 \> N%（硬编码），立即触发 **Panic Close**，强制平掉所有仓位并向用户发送紧急通知。
 
+### 3.5 市场数据缓存 (Market Data Cache)
+
+**实现位置**: `data_lake/market_data_manager.py`, `skills/market_data.py`, `runtime/data_fetcher.py`
+
+高性能历史数据缓存系统，为回测和策略分析提供快速数据访问。
+
+  * **存储架构**:
+      * 基础粒度：5分钟 OHLCV K线数据
+      * 缓存周期：最近3年历史数据
+      * 存储容量：~500MB（50个标的 × 3年）
+      * 动态聚合：支持即时聚合为 15分钟、1小时、日线级别
+
+  * **观察列表 (Watchlist)**:
+      * 动态管理：通过 `add_to_watchlist(symbol, priority)` 添加监控标的
+      * 优先级更新：高优先级标的优先更新数据
+      * 初始列表：SPY, QQQ, IWM, DIA, XLF, XLE, XLK, AAPL, NVDA, TSLA（10个核心标的）
+
+  * **后台更新器**:
+      * 更新频率：交易时段每5分钟自动更新
+      * 非阻塞式：使用 asyncio 异步任务，不影响主交易逻辑
+      * 交易时间检测：仅在美东时间 09:30-16:00（周一至周五）运行
+
+  * **数据获取策略**:
+      * 懒加载（Lazy Backfill）：首次查询时按需拉取历史数据
+      * 增量更新：只拉取最新的增量数据，降低 API 调用
+      * 指数退避重试：API 失败时采用 1s, 2s, 4s, 8s, 16s 递增重试
+
+  * **Skill 接口**:
+      ```python
+      # 获取历史K线
+      bars = get_historical_bars("AAPL", interval="5min", lookback_days=30)
+
+      # 多时间框架分析
+      mtf_data = get_multi_timeframe_data("NVDA", intervals=["5min", "1h", "daily"], lookback_days=30)
+
+      # 获取最新价格
+      latest = get_latest_price("SPY")
+
+      # 管理观察列表
+      add_to_watchlist("TSLA", priority=8, notes="High momentum")
+      watchlist = get_watchlist()
+      ```
+
+  * **数据质量指标**:
+      * `cache_hit`: 缓存命中率（预期数据覆盖率 ≥80%）
+      * `freshness_seconds`: 数据新鲜度（最新K线距今秒数）
+      * `gaps_detected`: 数据缺口检测（识别缺失的K线区间）
+      * `query_time_ms`: 查询性能（目标 <10ms for 30天回溯）
+
+  * **与蜂群集成**:
+      * 蜂群可直接调用 `get_historical_bars()` 获取技术分析所需的历史数据
+      * 多时间框架数据支持趋势识别和形态识别策略
+      * 数据缓存极大降低了 ThetaData API 调用，提升策略分析速度
+
 -----
 
 ## 4\. 数据流与交互协议 (Data Flow)
