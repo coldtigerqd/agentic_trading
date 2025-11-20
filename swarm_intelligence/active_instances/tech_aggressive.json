@@ -1,0 +1,16 @@
+{
+  "id": "tech_aggressive",
+  "sector": "TECH",
+  "template": "vol_sniper.md",
+  "parameters": {
+    "symbol_pool": ["NVDA", "AMD", "TSLA"],
+    "min_iv_rank": 80,
+    "max_delta_exposure": 0.30,
+    "sentiment_filter": "neutral_or_better"
+  },
+  "evolution_history": {
+    "generation": 1,
+    "created": "2025-11-20",
+    "last_mutated": null
+  }
+}

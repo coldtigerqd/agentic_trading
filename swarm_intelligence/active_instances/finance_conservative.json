@@ -1,0 +1,16 @@
+{
+  "id": "finance_conservative",
+  "sector": "FINANCE",
+  "template": "vol_sniper.md",
+  "parameters": {
+    "symbol_pool": ["JPM", "BAC", "GS"],
+    "min_iv_rank": 90,
+    "max_delta_exposure": 0.20,
+    "sentiment_filter": "neutral_only"
+  },
+  "evolution_history": {
+    "generation": 1,
+    "created": "2025-11-20",
+    "last_mutated": null
+  }
+}

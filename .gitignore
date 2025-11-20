@@ -1,0 +1,54 @@
+# Environment Variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data Lake (contains runtime data)
+data_lake/snapshots/
+data_lake/*.db
+data_lake/*.sqlite
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
