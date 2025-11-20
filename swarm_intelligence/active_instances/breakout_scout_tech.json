@@ -1,0 +1,16 @@
+{
+  "template": "breakout_scout",
+  "name": "breakout_scout_tech",
+  "description": "Breakout strategy targeting high-volatility tech stocks after consolidation",
+  "priority": 7,
+  "enabled": true,
+  "parameters": {
+    "symbol_pool": ["NVDA", "TSLA", "AMD", "META", "GOOGL", "AMZN", "NFLX", "AAPL"],
+    "atr_contraction_pct": 30,
+    "bb_squeeze_threshold": 0.10,
+    "volume_multiplier": 1.5,
+    "min_consolidation_days": 5,
+    "breakout_confirm_bars": 2
+  },
+  "notes": "Targets tech stocks known for explosive moves. Requires 30% ATR contraction and volume confirmation. Uses directional spreads for asymmetric risk/reward (2:1 minimum)."
+}
