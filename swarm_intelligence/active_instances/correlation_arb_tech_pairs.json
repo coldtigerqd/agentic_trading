@@ -1,0 +1,22 @@
+{
+  "template": "correlation_arbitrage",
+  "name": "correlation_arb_tech_pairs",
+  "description": "Statistical arbitrage on correlated tech stock pairs using z-score divergence",
+  "priority": 8,
+  "enabled": true,
+  "parameters": {
+    "symbol_pairs": [
+      ["AAPL", "MSFT"],
+      ["NVDA", "AMD"],
+      ["GOOGL", "META"],
+      ["AMZN", "SHOP"],
+      ["TSM", "INTC"]
+    ],
+    "min_correlation": 0.7,
+    "zscore_threshold": 2.0,
+    "lookback_days": 90,
+    "min_stability_days": 30,
+    "max_hedge_ratio": 2.0
+  },
+  "notes": "Targets highly correlated tech pairs. Requires 90-day correlation >= 0.7 and z-score >= 2.0 for entry. Uses hedge ratio from linear regression (capped at 2.0). Validates correlation stability over 30 days. Confirms with RSI and Bollinger Band divergence. Historical reversion rate > 70% required."
+}
