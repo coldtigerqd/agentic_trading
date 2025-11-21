@@ -3,12 +3,92 @@
 
 这些技能是 Commander 的主要接口，每个技能代表一个完整的业务流程。
 旨在替代大量内联Python代码，减少prompt消耗并提高稳定性。
+
+🔒 架构锁定原则：禁止嵌入式脚本实现
+- 所有命令必须使用这些预定义技能，绝不允许使用嵌入式大脚本
+- 防止 f-string 嵌套、字符串拼接地狱、语法错误陷阱
+- 确保稳定性、可维护性和调试友好性
 """
 
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, asdict
 import time
 from datetime import datetime
+
+
+def validate_architecture_compliance(operation_name: str = "unknown") -> Dict[str, Any]:
+    """
+    🔒 架构合规性验证函数
+
+    强制确保所有操作都遵循技能层架构，防止嵌入式脚本错误。
+
+    Args:
+        operation_name: 操作名称，用于错误报告
+
+    Returns:
+        验证结果字典
+
+    Raises:
+        RuntimeError: 如果检测到架构违规
+    """
+    import inspect
+    import traceback
+
+    # 获取调用栈
+    stack = inspect.stack()
+
+    # 检查最近3个调用层
+    for i, frame_info in enumerate(stack[1:4], 1):
+        frame = frame_info.frame
+        code = frame.f_code
+
+        # 检查文件名和行号
+        filename = frame_info.filename
+        line_no = frame_info.lineno
+
+        # 获取源代码行
+        try:
+            lines = inspect.getsourcelines(code)
+            for j, line in enumerate(lines[0], 1):
+                # 检查危险的架构模式
+                if "python3 -c" in line:
+                    raise RuntimeError(
+                        f"🚫 架构违规：检测到嵌入式脚本执行在 {filename}:{line_no + j}\n"
+                        f"禁止使用 'python3 -c' 模式，必须使用预定义技能函数\n"
+                        f"违规代码: {line.strip()}\n"
+                        f"操作: {operation_name}\n"
+                        f"请立即停止并使用 run_market_health_check()、run_full_trading_analysis() 等技能函数"
+                    )
+
+                # 检查大字符串拼接（潜在的脚本嵌入）
+                if "f'''" in line or 'f"""' in line:
+                    if len(line) > 100:  # 可能是大型脚本
+                        raise RuntimeError(
+                            f"🚫 架构违规：检测到大型f-string字符串在 {filename}:{line_no + j}\n"
+                            f"禁止使用大型嵌入式字符串，请分解为多个技能函数调用\n"
+                            f"违规代码: {line.strip()[:100]}...\n"
+                            f"操作: {operation_name}"
+                        )
+
+                # 检查Bash执行模式
+                if "bash(" in line and "python" in line:
+                    raise RuntimeError(
+                        f"🚫 架构违规：检测到Bash+Python组合执行在 {filename}:{line_no + j}\n"
+                        f"禁止通过Bash执行Python代码，请直接使用技能函数\n"
+                        f"违规代码: {line.strip()}\n"
+                        f"操作: {operation_name}"
+                    )
+
+        except OSError:
+            # 无法读取源代码，跳过检查
+            pass
+
+    return {
+        "compliance": "PASS",
+        "operation": operation_name,
+        "validation_time": datetime.now().isoformat(),
+        "message": "架构合规性检查通过"
+    }
 
 # 导入原子技能
 from .market_calendar import get_market_session_info
@@ -102,12 +182,16 @@ def run_full_trading_analysis(
     """
     执行完整的交易分析流程。
 
+    🔒 架构锁定：此函数是/trading:trade-analysis命令的唯一正确实现方式
+    禁止任何形式的嵌入式脚本或绕过此函数的行为
+
     这是 Commander 的主要入口点，封装了完整的交易决策流程：
-    1. 检查市场状态
-    2. 同步数据（如果需要）
-    3. 评估市场背景
-    4. 咨询蜂群智能
-    5. 过滤和执行信号
+    1. 架构合规性验证
+    2. 检查市场状态
+    3. 同步数据（如果需要）
+    4. 评估市场背景
+    5. 咨询蜂群智能
+    6. 过滤和执行信号
 
     参数:
         sectors: 要分析的板块列表（默认["ALL"]）
@@ -143,6 +227,17 @@ def run_full_trading_analysis(
     """
     if sectors is None:
         sectors = ["ALL"]
+
+    # 🔒 架构合规性验证 - 防止嵌入式脚本执行
+    compliance = validate_architecture_compliance("run_full_trading_analysis")
+    if compliance["compliance"] != "PASS":
+        result = TradingAnalysisResult(
+            market_session="ERROR",
+            market_open=False,
+            execution_error=f"架构违规: {compliance.get('message', 'Unknown violation')}",
+            execution_time=0.0
+        )
+        return result
 
     start_time = time.time()
     result = TradingAnalysisResult(
@@ -186,9 +281,19 @@ def run_full_trading_analysis(
                 skip_if_market_closed=skip_sync_if_market_closed
             )
 
-            if not sync_info['should_sync']:
+            if not sync_info['success']:
+                # 同步失败，添加错误信息
+                for error in sync_info.get('errors', []):
+                    result.warnings.append(f"数据同步错误: {error}")
+            elif sync_info['synced_count'] == 0:
+                # 没有同步任何数据
                 result.warnings.append(
-                    f"数据同步已跳过: {sync_info['message']}"
+                    f"数据同步完成，但未更新数据 ({sync_info['total_symbols']} 个标的)"
+                )
+            else:
+                # 同步成功
+                result.warnings.append(
+                    f"数据同步成功: {sync_info['synced_count']}/{sync_info['total_symbols']} 个标的"
                 )
         except Exception as e:
             result.warnings.append(f"数据同步失败: {str(e)}")

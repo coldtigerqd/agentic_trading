@@ -101,6 +101,90 @@ def fetch_stock_snapshot_quote(symbols: List[str]) -> Dict:
         }
 
 
+def fetch_stock_eod_data(symbols: List[str]) -> Dict:
+    """
+    从 ThetaData Terminal Server 获取股票 EOD 数据
+
+    当市场关闭时使用此函数获取最新收盘数据。
+
+    Args:
+        symbols: 股票代码列表
+
+    Returns:
+        {
+            'success': bool,
+            'data': List[Dict],  # 每个股票的EOD数据
+            'errors': List[str]
+        }
+    """
+    try:
+        # 获取昨天的日期（EOD数据通常在当天收盘后可用）
+        from datetime import datetime, timedelta
+        eastern = pytz.timezone('US/Eastern')
+        yesterday = (datetime.now(eastern) - timedelta(days=1)).strftime('%Y-%m-%d')
+
+        # ThetaData EOD API 端点
+        url = f"{THETA_API_BASE_URL}/v3/stock/history/eod"
+
+        eod_data = []
+        errors = []
+
+        # 逐个查询EOD数据（避免CSV格式解析问题）
+        for symbol in symbols:
+            try:
+                params = {
+                    'symbol': symbol,
+                    'start_date': yesterday,
+                    'end_date': yesterday
+                }
+
+                with httpx.Client(timeout=30.0) as client:
+                    response = client.get(url, params=params)
+                    response.raise_for_status()
+
+                    # 解析CSV响应（EOD API返回CSV格式）
+                    lines = response.text.strip().split('\n')
+                    if len(lines) >= 2:  # 标题行 + 数据行
+                        # 解析CSV数据
+                        data_line = lines[1]
+                        fields = data_line.split(',')
+
+                        if len(fields) >= 7:
+                            eod_record = {
+                                'symbol': symbol,
+                                'date': yesterday,
+                                'timestamp': fields[0],  # created timestamp
+                                'last_trade': fields[1],
+                                'open': float(fields[2]),
+                                'high': float(fields[3]),
+                                'low': float(fields[4]),
+                                'close': float(fields[5]),
+                                'volume': int(fields[6])
+                            }
+                            eod_data.append(eod_record)
+                        else:
+                            errors.append(f"{symbol}: EOD数据格式不完整")
+                    else:
+                        errors.append(f"{symbol}: 无EOD数据")
+
+            except Exception as e:
+                errors.append(f"{symbol}: EOD获取失败 - {str(e)}")
+
+        return {
+            'success': len(eod_data) > 0,
+            'data': eod_data,
+            'errors': errors
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to fetch EOD data: {e}")
+        return {
+            'success': False,
+            'data': [],
+            'errors': [f"EOD API error: {str(e)}"]
+        }
+
+
 def get_watchlist_symbols() -> List[Dict]:
     """
     获取观察列表中的所有活跃股票
@@ -258,7 +342,7 @@ def sync_watchlist_incremental(
             'synced_count': 0,
             'failed_count': 0,
             'results': [],
-            'errors': [f"Market closed ({session_info['session']}). Next open: {session_info.get('next_market_open', 'N/A')}"],
+            'errors': [f"市场已关闭 ({session_info['session']})。下次开盘: {session_info.get('next_market_open', '未知')}"],
             'execution_time': time.time() - start_time
         }
 
@@ -284,8 +368,15 @@ def sync_watchlist_incremental(
     if max_symbols:
         symbols = symbols[:max_symbols]
 
-    # 使用 httpx 从 ThetaData API 获取快照数据
-    snapshot_result = fetch_stock_snapshot_quote(symbols)
+    # 根据市场状态选择数据源
+    if session_info['market_open']:
+        # 市场开盘：使用快照数据
+        snapshot_result = fetch_stock_snapshot_quote(symbols)
+        data_source = "snapshot"
+    else:
+        # 市场关闭：使用EOD数据
+        snapshot_result = fetch_stock_eod_data(symbols)
+        data_source = "eod"
 
     if not snapshot_result['success']:
         return {
@@ -295,7 +386,7 @@ def sync_watchlist_incremental(
             'synced_count': 0,
             'failed_count': len(symbols),
             'results': [],
-            'errors': snapshot_result['errors'],
+            'errors': [f"{data_source.upper()} API 失败: " + ", ".join(snapshot_result['errors'])],
             'execution_time': time.time() - start_time
         }
 
@@ -307,20 +398,45 @@ def sync_watchlist_incremental(
 
     for snapshot in snapshot_result['data']:
         try:
-            # 提取股票代码（v3 API 直接返回 'symbol' 字段）
-            symbol = snapshot.get('symbol', 'UNKNOWN')
+            # 根据数据源格式提取股票代码和标准化数据
+            if data_source == "snapshot":
+                # 快照数据格式
+                symbol = snapshot.get('symbol', 'UNKNOWN')
+                normalized_snapshot = {
+                    'timestamp': snapshot.get('timestamp'),
+                    'open': snapshot.get('open'),
+                    'high': snapshot.get('high'),
+                    'low': snapshot.get('low'),
+                    'close': snapshot.get('close'),
+                    'volume': snapshot.get('volume'),
+                    'vwap': snapshot.get('vwap')  # 可选字段
+                }
+            else:
+                # EOD数据格式
+                symbol = snapshot.get('symbol', 'UNKNOWN')
+                # EOD数据需要转换时间戳格式
+                eod_timestamp = snapshot.get('timestamp')
+                if eod_timestamp:
+                    # 为EOD数据创建5分钟间隔的时间戳（使用收盘时间）
+                    from datetime import datetime, timedelta
+                    eod_date = datetime.fromisoformat(eod_timestamp.replace('Z', '+00:00'))
+                    # 使用收盘时间 16:00 ET 作为时间戳
+                    close_time = eod_date.replace(hour=16, minute=0, second=0, microsecond=0)
+                    if close_time.tzinfo is None:
+                        close_time = ET.localize(close_time)
+                    timestamp = close_time.isoformat()
+                else:
+                    timestamp = datetime.now(ET).isoformat()
 
-            # v3 API 已经返回标准化的 OHLC 数据，直接使用
-            # 字段包括: timestamp, symbol, open, high, low, close, volume, count
-            normalized_snapshot = {
-                'timestamp': snapshot.get('timestamp'),
-                'open': snapshot.get('open'),
-                'high': snapshot.get('high'),
-                'low': snapshot.get('low'),
-                'close': snapshot.get('close'),
-                'volume': snapshot.get('volume'),
-                'vwap': snapshot.get('vwap')  # 可选字段
-            }
+                normalized_snapshot = {
+                    'timestamp': timestamp,
+                    'open': snapshot.get('open'),
+                    'high': snapshot.get('high'),
+                    'low': snapshot.get('low'),
+                    'close': snapshot.get('close'),
+                    'volume': snapshot.get('volume'),
+                    'vwap': None  # EOD数据没有VWAP
+                }
 
             # 缓存到数据库
             cache_result = process_snapshot_and_cache(symbol, normalized_snapshot)
@@ -358,6 +474,7 @@ def sync_watchlist_incremental(
     return {
         'success': synced_count > 0,
         'market_status': session_info,
+        'data_source': data_source,  # 添加数据源信息
         'total_symbols': len(symbols),
         'synced_count': synced_count,
         'failed_count': failed_count,

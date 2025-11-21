@@ -134,7 +134,7 @@ def calculate_capital(signal: Dict) -> float:
     return 2000.0
 
 
-# === CLAUDE CODE 集成指南 ===
+# === Claude Code 集成指南 ===
 """
 当被 main_loop.py 调用时，Claude Code 应该：
 

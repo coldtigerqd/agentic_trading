@@ -195,6 +195,33 @@
 {{ market_data|tojson(indent=2) }}
 ```
 
+## JSON输出要求
+
+**必须严格按照以下JSON格式返回分析结果，不要添加任何解释性文字：**
+
+```json
+{
+  "signal": "信号类型",
+  "target": "目标标的代码",
+  "confidence": 0.75,
+  "reasoning": "基于波动率分析的详细推理",
+  "params": {
+    "strike_short": 0,
+    "strike_long": 0,
+    "expiry": "YYYYMMDD"
+  }
+}
+```
+
+**信号类型选项**：
+- "NO_TRADE" - 不进行交易
+- "SHORT_PUT_SPREAD" - 看跌价差
+- "SHORT_CALL_SPREAD" - 看涨价差
+- "IRON_CONDOR" - 铁鹰策略
+- "CREDIT_SPREAD" - 信用价差
+
+**置信度要求**：必须是0.0-1.0之间的数字，低于0.70的信号将被忽略。
+
 ## 您的分析
 
 分析数据并提供您的交易信号。

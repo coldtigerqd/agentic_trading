@@ -204,12 +204,12 @@ def find_target_expiration(expirations: List[str], dte_range: tuple = (30, 45)) 
     return best_exp[1]
 
 
-# === CLAUDE CODE 使用指南 ===
+# === Claude Code 使用指南 ===
 """
 当 Claude Code 作为 Commander 时，使用此模式：
 
 ```python
-# === SENSE 阶段 ===
+# === 感知阶段 ===
 # 通过 IBKR MCP 获取账户和持仓
 account = mcp__ibkr__get_account()
 positions = mcp__ibkr__get_positions()
@@ -228,7 +228,7 @@ options = mcp__ThetaData__option_snapshot_quote(
     expiration=target_exp
 )
 
-# === THINK 阶段 ===
+# === 思考阶段 ===
 from skills import consult_swarm
 
 market_data = {
@@ -242,7 +242,7 @@ market_data = {
 
 signals = consult_swarm(sector="TECH", market_data=market_data)
 
-# === DECIDE 阶段 ===
+# === 决策阶段 ===
 from skills import kelly_criterion
 
 approved_trades = []
@@ -263,7 +263,7 @@ for signal in signals:
     if position_size <= 2000 and signal["params"]["max_risk"] <= 500:
         approved_trades.append(signal)
 
-# === ACT 阶段 ===
+# === 执行阶段 ===
 from skills import place_order_with_guard
 from skills.mcp_bridge import execute_order_with_ibkr
 

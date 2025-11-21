@@ -63,7 +63,7 @@ def load_instances(sector_filter: Optional[str] = None) -> List[Dict]:
             instances.append(instance)
 
         except json.JSONDecodeError as e:
-            print(f"警告：加载实例 {json_file} 失败: {e} (JSON_DECODE_ERROR)")
+            print(f"⚠️ 加载实例配置失败 {json_file}: {e}")
             continue
 
     return instances
@@ -108,7 +108,8 @@ def render_template(template_content: str, parameters: Dict[str, Any], market_da
     template = env.from_string(template_content)
 
     # 合并 parameters 和 market_data 作为模板上下文
-    context = {**parameters}
+    # 修复：确保 'parameters' 键也包含在上下文中
+    context = {'parameters': parameters, **parameters}
     if market_data:
         context['market_data'] = market_data
 
@@ -145,14 +146,14 @@ async def execute_single_instance(
     try:
         # 加载并渲染模板
         template_content = load_template(template_name)
-        print(f"[{instance_id}] 模板已加载: {template_name}")
+        print(f"📋 [{instance_id}] 策略模板加载完成: {template_name}")
 
         rendered_prompt = render_template(template_content, parameters, market_data)
-        print(f"[{instance_id}] 模板渲染成功")
+        print(f"✨ [{instance_id}] 模板渲染完成")
 
         # 在 LLM 调用之前保存输入快照
         timestamp = datetime.now().isoformat()
-        print(f"[{instance_id}] 正在保存快照...")
+        print(f"💾 [{instance_id}] 正在保存决策快照...")
         snapshot_id = save_snapshot(
             instance_id=instance_id,
             template_name=template_name,
@@ -161,7 +162,7 @@ async def execute_single_instance(
             agent_response=None,  # LLM 调用后更新
             timestamp=timestamp
         )
-        print(f"[{instance_id}] 快照已保存: {snapshot_id}")
+        print(f"✅ [{instance_id}] 决策快照已保存: {snapshot_id}")
 
         # 执行 LLM API 调用（带超时）
         try:
@@ -188,19 +189,21 @@ async def execute_single_instance(
         print(f"警告：{e}")
         return None
     except Exception as e:
-        print(f"执行实例 {instance_id} 时出错: {e} (EXECUTION_ERROR)")
+        print(f"❌ 执行策略实例失败 {instance_id}: {e}")
         return None
 
 
-async def call_llm_api(prompt: str, market_data: Dict) -> Dict:
+async def call_llm_api(prompt: str, market_data: Dict, max_retries: int = 2) -> Dict:
     """
     通过 OpenRouter 调用 LLM API 以获取交易信号。
 
     使用 Gemini 2.5 Flash 进行快速、经济高效的并发执行。
+    包含重试机制和错误恢复功能。
 
     参数:
         prompt: 渲染后的提示词
         market_data: 市场数据上下文
+        max_retries: 最大重试次数
 
     返回:
         LLM 响应字典（从 JSON 响应解析）
@@ -227,60 +230,205 @@ async def call_llm_api(prompt: str, market_data: Dict) -> Dict:
             "reasoning": "IV 升高且情绪中性，表明存在卖出权利金的机会。"
         }
 
-    try:
-        # 初始化 OpenRouter 客户端（OpenAI 兼容）
-        client = AsyncOpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=api_key
-        )
+    for attempt in range(max_retries + 1):
+        try:
+            # 初始化 OpenRouter 客户端（OpenAI 兼容）
+            client = AsyncOpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=api_key
+            )
 
-        # 通过 OpenRouter 调用 Gemini 2.0 Flash
-        completion = await client.chat.completions.create(
-            model="google/gemini-2.5-flash",  # 免费层，速度非常快
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
+            # 调整温度参数，重试时降低随机性
+            temp = 0.7 if attempt == 0 else 0.3
+
+            # 通过 OpenRouter 调用 Gemini 2.0 Flash
+            completion = await client.chat.completions.create(
+                model="google/gemini-2.5-flash",  # 免费层，速度非常快
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt + (f"\n\n（第{attempt + 1}次尝试，请确保返回严格的JSON格式）" if attempt > 0 else "")
+                    }
+                ],
+                temperature=temp,
+                max_tokens=1000,
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/agentic-alphahive",  # 可选
+                    "X-Title": "Agentic AlphaHive Runtime"  # 可选
                 }
-            ],
-            temperature=0.7,
-            max_tokens=1000,
-            extra_headers={
-                "HTTP-Referer": "https://github.com/agentic-alphahive",  # 可选
-                "X-Title": "Agentic AlphaHive Runtime"  # 可选
+            )
+
+            # 提取响应内容
+            response_text = completion.choices[0].message.content
+
+            # 去除 markdown 代码块（如果存在）
+            # Gemini 经常将 JSON 包装在 ```json ... ``` 中
+            response_text = response_text.strip()
+            if response_text.startswith("```"):
+                # 移除开头的 ```json 或 ```
+                lines = response_text.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                # 移除结尾的 ```
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                response_text = "\n".join(lines).strip()
+
+            # 解析 JSON 响应
+            import json
+            response_json = json.loads(response_text)
+
+            # 成功解析，返回结果
+            if attempt > 0:
+                print(f"🔄 重试成功: 第{attempt + 1}次尝试获得有效JSON响应")
+
+            return response_json
+
+        except json.JSONDecodeError as e:
+            print(f"⚠️ 第{attempt + 1}次尝试解析失败: {e}")
+            print(f"📄 响应内容: {response_text[:200]}...")
+
+            if attempt == max_retries:
+                # 最后一次尝试失败，使用智能解析
+                print(f"🧠 使用智能解析处理最终响应")
+                return _parse_non_json_response(response_text)
+            else:
+                # 等待后重试
+                await asyncio.sleep(1 * (attempt + 1))  # 递增等待时间
+
+        except Exception as e:
+            print(f"🔥 第{attempt + 1}次API调用失败: {e}")
+            if attempt == max_retries:
+                print(f"💥 所有重试均失败，返回默认值")
+                return _get_default_response(market_data)
+            else:
+                await asyncio.sleep(1 * (attempt + 1))  # 递增等待时间
+
+    # 这个函数现在在重试循环中处理，不需要单独的except块
+
+
+def _get_default_response(market_data: Dict) -> Dict:
+    """
+    当所有重试都失败时，返回安全的默认响应。
+    """
+    # 从市场数据中获取第一个可用的标的
+    symbols = market_data.get("symbols", [])
+    target = symbols[0] if symbols else "SPY"
+
+    return {
+        "signal": "NO_TRADE",
+        "target": target,
+        "confidence": 0.0,
+        "reasoning": "系统重试失败，返回安全的无交易信号",
+        "params": {}
+    }
+
+
+def _parse_non_json_response(response_text: str) -> Optional[Dict]:
+    """
+    智能解析非JSON格式的AI响应，尝试提取结构化信息。
+
+    当AI返回自然语言文本而不是JSON时，尝试从文本中提取交易信号。
+    """
+    import re
+
+    try:
+        # 默认返回值
+        default_response = {
+            "signal": "NO_TRADE",
+            "target": "",
+            "confidence": 0.0,
+            "reasoning": "AI响应格式不正确，使用默认值",
+            "params": {}
+        }
+
+        # 转换为小写以便匹配
+        text_lower = response_text.lower()
+
+        # 查找提到的股票代码
+        stock_patterns = [
+            r'\b([A-Z]{2,5})\b',  # 大写股票代码
+            r'\$([a-z]{2,5})\b'   # $符号后跟股票代码
+        ]
+
+        mentioned_stocks = []
+        for pattern in stock_patterns:
+            matches = re.findall(pattern, response_text, re.IGNORECASE)
+            mentioned_stocks.extend(matches)
+
+        # 去重并过滤常见的金融词汇
+        common_words = {'ETF', 'SPY', 'QQQ', 'IWM', 'THE', 'AMD', 'AAPL', 'NVDA', 'MSFT', 'GOOGL', 'META', 'TSLA', 'AMZN'}
+        filtered_stocks = []
+        for s in mentioned_stocks:
+            if isinstance(s, str):  # 确保是字符串
+                s_upper = s.upper()
+                if s_upper not in common_words or len(s_upper) <= 5:
+                    filtered_stocks.append(s_upper)
+        mentioned_stocks = list(set(filtered_stocks))[:3]  # 最多取3个
+
+        # 检测交易信号类型
+        signal_type = "NO_TRADE"
+        if any(word in text_lower for word in ['short put', 'put spread', '卖出看跌', '看跌期权']):
+            signal_type = "SHORT_PUT_SPREAD"
+        elif any(word in text_lower for word in ['short call', 'call spread', '卖出看涨', '看涨期权']):
+            signal_type = "SHORT_CALL_SPREAD"
+        elif any(word in text_lower for word in ['iron condor', '铁鹰', '中性策略']):
+            signal_type = "IRON_CONDOR"
+        elif any(word in text_lower for word in ['credit spread', '价差']):
+            signal_type = "CREDIT_SPREAD"
+        elif any(word in text_lower for word in ['buy call', '买入看涨', '看涨']):
+            signal_type = "LONG_CALL"
+        elif any(word in text_lower for word in ['buy put', '买入看跌', '看跌']):
+            signal_type = "LONG_PUT"
+
+        # 检测置信度
+        confidence = 0.0
+        confidence_patterns = [
+            r'置信度[:：]\s*(\d+(?:\.\d+)?)',
+            r'confidence[:：]\s*(\d+(?:\.\d+)?)',
+            r'(\d+(?:\.\d+)?)\s*%?\s*置信度',
+            r'(\d+(?:\.\d+)?)\s*%?\s*confidence'
+        ]
+
+        for pattern in confidence_patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                try:
+                    conf_value = float(match.group(1))
+                    confidence = min(conf_value / 100 if conf_value > 1 else conf_value, 1.0)
+                    break
+                except:
+                    continue
+
+        # 检测目标标的
+        target = mentioned_stocks[0] if mentioned_stocks else "SPY"  # 默认SPY
+
+        # 提取推理（取前100个字符）
+        reasoning = response_text.strip()[:150] + "..." if len(response_text) > 150 else response_text.strip()
+
+        # 如果检测到有效信号，使用提取的信息
+        if signal_type != "NO_TRADE" and confidence > 0.1:
+            print(f"🧠 智能解析成功: 检测到 {signal_type} 信号，置信度 {confidence:.2f}")
+            return {
+                "signal": signal_type,
+                "target": target,
+                "confidence": confidence,
+                "reasoning": reasoning,
+                "params": {}  # 从自然语言中提取参数比较复杂，暂时为空
             }
-        )
-
-        # 提取响应内容
-        response_text = completion.choices[0].message.content
-
-        # 去除 markdown 代码块（如果存在）
-        # Gemini 经常将 JSON 包装在 ```json ... ``` 中
-        response_text = response_text.strip()
-        if response_text.startswith("```"):
-            # 移除开头的 ```json 或 ```
-            lines = response_text.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            # 移除结尾的 ```
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            response_text = "\n".join(lines).strip()
-
-        # 解析 JSON 响应
-        import json
-        response_json = json.loads(response_text)
-
-        return response_json
-
-    except json.JSONDecodeError as e:
-        print(f"警告：解析 LLM 响应为 JSON 失败: {e} (JSON_PARSE_ERROR)")
-        print(f"原始响应: {response_text[:200]}")
-        return None
+        else:
+            print(f"🤔 未检测到明确交易信号，使用默认值")
+            return default_response
 
     except Exception as e:
-        print(f"调用 OpenRouter API 时出错: {e} (API_CALL_ERROR)")
-        return None
+        print(f"🔧 智能解析失败: {e}")
+        return {
+            "signal": "NO_TRADE",
+            "target": "",
+            "confidence": 0.0,
+            "reasoning": f"智能解析出错: {str(e)}",
+            "params": {}
+        }
 
 
 def parse_signal_response(response: Dict, instance_id: str, template_name: str) -> Optional[Signal]:
@@ -295,6 +443,11 @@ def parse_signal_response(response: Dict, instance_id: str, template_name: str) 
     返回:
         Signal 对象，解析失败返回 None
     """
+    # 修复：检查 response 是否为 None
+    if response is None:
+        print(f"⚠️ AI 响应为空 {instance_id}: 无法解析空响应")
+        return None
+
     try:
         return Signal(
             instance_id=instance_id,
@@ -306,7 +459,7 @@ def parse_signal_response(response: Dict, instance_id: str, template_name: str) 
             reasoning=response.get("reasoning", "")
         )
     except (KeyError, ValueError) as e:
-        print(f"警告：解析来自 {instance_id} 的信号失败: {e} (SIGNAL_PARSE_ERROR)")
+        print(f"⚠️ 解析交易信号失败 {instance_id}: {e}")
         return None
 
 
@@ -443,8 +596,8 @@ def consult_swarm(
         symbols = list(set(symbols))
 
         if symbols:
-            print(f"\n=== 数据质量飞行前检查 ===")
-            print(f"正在验证 {len(symbols)} 个标的的数据...")
+            print(f"\n🔍 数据质量前置检查")
+            print(f"📊 正在验证 {len(symbols)} 个标的的数据...")
 
             # 验证数据质量
             validation = validate_data_quality(
@@ -497,8 +650,8 @@ def consult_swarm(
                     )
                 }]
             else:
-                print(f"✓ 数据质量验证通过")
-                print(f"  {len(validation['symbols_passed'])}/{len(symbols)} 个标的有充足数据\n")
+                print(f"✅ 数据质量验证通过")
+                print(f"📊 {len(validation['symbols_passed'])}/{len(symbols)} 个标的数据充足\n")
         else:
             print(f"⚠️  未提供标的用于数据质量验证 (NO_SYMBOLS)")
             print(f"  谨慎继续 - 蜂群可能因缺少数据而失败\n")

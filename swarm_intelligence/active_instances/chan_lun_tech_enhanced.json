@@ -1,0 +1,26 @@
+{
+  "id": "chan_lun_tech_enhanced",
+  "sector": "TECH",
+  "template": "chan_lun_enhanced_final.md",
+  "parameters": {
+    "symbol_pool": ["AAPL", "NVDA", "AMD", "MSFT", "GOOGL", "META", "TSLA", "AMZN"],
+    "lookback_days": 45,
+    "pen_threshold": 5,
+    "zhongshu_depth": 3,
+    "min_breakout_strength": 0.02,
+    "volume_threshold": 1.3,
+    "min_confidence": 0.75,
+    "risk_per_trade": 0.02
+  },
+  "evolution_history": {
+    "generation": 1,
+    "created": "2025-11-21",
+    "last_mutated": null,
+    "optimization_notes": [
+      "增强版缠论策略，整合多时间周期分析",
+      "增加MACD、RSI、布林带多指标确认",
+      "改进背驰检测机制",
+      "加入成交量确认逻辑"
+    ]
+  }
+}
