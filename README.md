@@ -214,3 +214,255 @@ agentic-alphahive/
 5.  **行动**: Claude Code 调用 `skills.execution_gate` 发送订单。
 6.  **休眠**: 系统挂起，等待下一周期。
 7.  **进化**: 休市后，`dream_lab` 进程启动，优化 JSON 配置文件。
+
+-----
+
+## 6\. 脚本明细 (Scripts Reference)
+
+系统提供了一系列脚本工具用于运行、测试和维护。所有脚本均使用 **REST API** 与 ThetaData 通信（而非过时的 MCP 方法）。
+
+### 6.1 核心运行脚本
+
+#### `runtime/main_loop.py`
+**功能**: 主交易循环，唤醒 Commander 进行交易决策
+
+**使用方法**:
+```bash
+# 运行主交易循环（前台）
+python runtime/main_loop.py
+
+# 后台运行
+nohup python runtime/main_loop.py > logs/main.log 2>&1 &
+```
+
+**说明**:
+- 调用 Commander System Prompt 执行 SENSE-THINK-DECIDE-ACT 工作流
+- 每个周期获取账户状态、咨询蜂群、执行订单
+- 需要 IBKR Gateway 连接和环境变量配置
+
+---
+
+#### `runtime/watchdog.py`
+**功能**: 独立看门狗进程，监控账户回撤并触发熔断器
+
+**使用方法**:
+```bash
+# 单独启动看门狗
+python runtime/watchdog.py
+
+# 后台运行
+nohup python runtime/watchdog.py > logs/watchdog.log 2>&1 &
+```
+
+**说明**:
+- 独立进程运行，不依赖主循环
+- 每60秒检查一次账户净值
+- 回撤超过 10% 自动触发熔断器
+- 使用独立的 IBKR 连接（client_id=999）
+
+---
+
+#### `runtime/data_sync_daemon.py`
+**功能**: 数据同步守护进程，定期更新监控列表市场数据
+
+**使用方法**:
+```bash
+# 前台运行（每10分钟同步一次）
+python runtime/data_sync_daemon.py --interval 10
+
+# 单次同步后退出
+python runtime/data_sync_daemon.py --once
+
+# 后台运行
+nohup python runtime/data_sync_daemon.py --interval 10 > logs/data_sync.log 2>&1 &
+
+# 使用 cron（每10分钟）
+*/10 * * * * cd /path/to/agentic_trading && python runtime/data_sync_daemon.py --once
+```
+
+**说明**:
+- ✅ 使用 REST API（httpx）获取数据，不依赖 MCP
+- ✅ 增量更新：只获取新数据，自动去重
+- ✅ 市场感知：只在交易时段主动同步
+- ✅ 错误重试：网络失败自动重试
+
+---
+
+### 6.2 数据同步脚本
+
+#### `scripts/demo_incremental_sync.py`
+**功能**: 增量数据同步演示脚本，展示完整同步工作流
+
+**使用方法**:
+```bash
+python scripts/demo_incremental_sync.py
+```
+
+**说明**:
+- 演示如何使用 `skills` 模块进行增量同步
+- 显示市场状态、数据新鲜度报告
+- 可作为 Commander 工作流的参考
+
+---
+
+#### `scripts/run_sync_once.py`
+**功能**: 一次性数据同步脚本，适合手动触发
+
+**使用方法**:
+```bash
+python scripts/run_sync_once.py
+```
+
+**说明**:
+- 执行一次完整的数据同步周期
+- 更新所有监控列表中的股票数据
+- 适合手动更新或 cron 任务
+
+---
+
+#### `scripts/sync_with_rest_api.py`
+**功能**: 使用 REST API 的数据同步脚本，支持持续运行模式
+
+**使用方法**:
+```bash
+# 单次同步
+python scripts/sync_with_rest_api.py --once
+
+# 持续运行（每10分钟）
+python scripts/sync_with_rest_api.py --interval 10
+```
+
+**说明**:
+- ✅ 直接通过 HTTP 请求获取数据，更稳定可靠
+- 不依赖 MCP，使用 httpx.stream()
+- 支持环境变量或 .env 文件配置 API 密钥
+
+---
+
+### 6.3 测试与验证脚本
+
+#### `verify_setup.py`
+**功能**: 系统设置验证脚本，测试所有核心组件
+
+**使用方法**:
+```bash
+python verify_setup.py
+```
+
+**说明**:
+- 测试技能库导入
+- 验证数学函数（Kelly Criterion, Black-Scholes）
+- 检查数据库连接
+- 验证蜂群配置加载
+- 测试 Commander 提示词
+- 显示系统就绪状态
+
+**预期输出**:
+```
+✅ All components verified successfully!
+
+System Status:
+  • Skills Library: Ready ✓
+  • Data Persistence: Ready ✓
+  • Swarm Intelligence: Ready ✓
+  • Commander Prompt: Ready ✓
+  • Safety Layer: Ready ✓
+```
+
+---
+
+#### `test_template_localization.py`
+**功能**: 模板本地化集成测试
+
+**使用方法**:
+```bash
+python test_template_localization.py
+```
+
+**说明**:
+- 验证所有蜂群策略模板正确渲染
+- 检查实例配置文件结构
+- 测试 Commander 提示词加载
+- 验证中文字符编码（UTF-8）
+- 确保 Jinja2 变量正确替换
+
+---
+
+#### `scripts/test_theta_fix.py`
+**功能**: ThetaData API 修复验证测试
+
+**使用方法**:
+```bash
+# 启动 Theta Terminal
+java -jar ThetaTerminalv3.jar
+
+# 运行测试
+python scripts/test_theta_fix.py
+```
+
+**说明**:
+- 测试 Quote Snapshot API
+- 测试 OHLC Snapshot API
+- 验证 CSV 解析是否匹配 ThetaData API 文档
+- 需要 Theta Terminal 运行在 localhost:25503
+
+---
+
+#### `scripts/test_theta_terminal.py`
+**功能**: Theta Terminal 连接测试
+
+**使用方法**:
+```bash
+python scripts/test_theta_terminal.py
+```
+
+**说明**:
+- 验证 Theta Terminal 是否正在运行
+- 测试基本的 API 连接
+- 快速健康检查工具
+
+---
+
+### 6.4 数据库种子脚本
+
+#### `data_lake/seed_watchlist.py`
+**功能**: 初始化监控列表数据
+
+**使用方法**:
+```bash
+python -c "from data_lake.seed_watchlist import seed_default_watchlist; seed_default_watchlist()"
+```
+
+**说明**:
+- 创建默认的监控列表（科技股、金融股等）
+- 设置优先级和备注
+- 首次设置系统时使用
+
+---
+
+### 6.5 脚本选择指南
+
+| 使用场景 | 推荐脚本 |
+|---------|---------|
+| 启动交易系统 | `runtime/main_loop.py` |
+| 启动安全监控 | `runtime/watchdog.py` |
+| 定期数据同步 | `runtime/data_sync_daemon.py --interval 10` |
+| 手动更新数据 | `scripts/run_sync_once.py` |
+| 验证系统配置 | `verify_setup.py` |
+| 测试 ThetaData 连接 | `scripts/test_theta_fix.py` |
+| 测试模板本地化 | `test_template_localization.py` |
+| 初始化监控列表 | `data_lake/seed_watchlist.py` |
+
+---
+
+### 6.6 已移除的过时脚本
+
+以下脚本已被删除，因为它们使用了已弃用的 MCP 方法（已被 REST API 替代）：
+
+- ❌ `runtime/data_fetcher.py` - 使用 MCP ThetaData 工具（已被 REST API 替代）
+- ❌ `scripts/fetch_real_market_data.py` - 使用 MCP（功能已被 data_sync_daemon.py 替代）
+- ❌ `scripts/incremental_data_sync.py` - 使用 MCP（功能已被 data_sync_daemon.py 替代）
+- ❌ `scripts/populate_market_data.py` - 生成示例数据（不再需要，使用真实市场数据）
+- ❌ `scripts/test_theta.py` - 基础测试（已被 test_theta_fix.py 替代）
+
+**重要提示**: 所有新开发的脚本和工作流应该使用 **REST API**（通过 `skills.thetadata_client.fetch_snapshot_with_rest`）而不是 MCP ThetaData 工具。参见 `prompts/commander_system.md` 中的最新指导。
