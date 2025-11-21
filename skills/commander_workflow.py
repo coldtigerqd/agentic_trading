@@ -2,7 +2,7 @@
 Commander 工作流 - Claude Code 集成示例。
 
 本模块演示 Claude Code (Commander) 应如何结合使用
-MCP 工具和技能库来执行交易周期。
+MCP 工具和技能库(Claude Code Skills)来执行交易周期。
 
 重要提示：此模块旨在由 Claude Code 执行，而非独立脚本运行。
 此处的函数展示了当 Claude 被 main_loop.py 调用时的预期工作流。
