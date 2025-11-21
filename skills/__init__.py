@@ -1,11 +1,11 @@
 """
-Skills Library for Agentic AlphaHive Runtime.
+Agentic AlphaHive 运行时技能库。
 
-This package provides computational primitives that Claude Code (Commander agent)
-can invoke to perform deterministic operations including:
-- Swarm intelligence orchestration
-- Mathematical calculations (Kelly criterion, Black-Scholes IV)
-- Validated order execution through safety layer
+本软件包提供 Claude Code (Commander 代理) 可调用的计算原语，
+用于执行确定性操作，包括：
+- 蜂群智能编排
+- 数学计算 (Kelly Criterion, Black-Scholes IV)
+- 通过安全层验证的订单执行
 """
 
 from .swarm_core import consult_swarm

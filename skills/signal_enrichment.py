@@ -1,8 +1,8 @@
 """
-Signal Enrichment - Post-processor for swarm signals.
+信号增强 - Swarm 信号的后处理器。
 
-Converts simplified signals (just strikes) into fully executable orders
-with legs, pricing, and risk calculations.
+将简化的信号（仅包含执行价格）转换为完全可执行的订单，
+包含期权腿、定价和风险计算。
 """
 
 from typing import Dict, List, Optional, Any
@@ -11,36 +11,36 @@ from datetime import datetime
 
 def enrich_signal(signal: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Enrich a swarm signal with executable order details.
+    使用可执行订单详情增强 swarm 信号。
 
-    If the signal already has complete 'legs', return as-is.
-    Otherwise, convert strikes into full leg structures.
-    Also adds missing prices to existing legs.
+    如果信号已经包含完整的 'legs'，则直接返回。
+    否则，将执行价格转换为完整的期权腿结构。
+    同时为现有期权腿添加缺失的价格。
 
     Args:
-        signal: Raw signal from swarm
-        market_data: Market data for pricing
+        signal: 来自 swarm 的原始信号
+        market_data: 用于定价的市场数据
 
     Returns:
-        Enriched signal with complete params.legs
+        包含完整 params.legs 的增强信号
     """
     params = signal.get("params", {})
     target = signal.get("target", "")
 
-    # If legs already exist, check if they need price enrichment
+    # 如果期权腿已存在，检查是否需要价格增强
     if "legs" in params and params["legs"]:
         legs = params["legs"]
         needs_pricing = any("price" not in leg for leg in legs)
 
         if needs_pricing and target:
-            # Add prices to existing legs
+            # 为现有期权腿添加价格
             quote = market_data.get("quotes", {}).get(target, {})
             underlying_price = quote.get("last", 0)
 
             if underlying_price:
                 for leg in legs:
                     if "price" not in leg:
-                        # Estimate price based on strike and underlying
+                        # 根据 strike 和标的资产估算价格
                         contract = leg.get("contract", {})
                         strike = contract.get("strike", 0)
                         right = contract.get("right", "P")
@@ -48,22 +48,22 @@ def enrich_signal(signal: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[s
                         if strike:
                             moneyness = strike / underlying_price
                             if right == "P":
-                                # Put pricing
+                                # PUT 定价
                                 leg["price"] = round(max(0.5, (1 - moneyness) * underlying_price * 0.05), 2)
                             else:
-                                # Call pricing
+                                # CALL 定价
                                 leg["price"] = round(max(0.5, (moneyness - 1) * underlying_price * 0.05), 2)
 
         return signal
 
-    # Otherwise, convert strikes to legs
+    # 否则，将执行价格转换为期权腿
     strategy = signal.get("signal", "")
     target = signal.get("target", "")
 
     if strategy == "NO_TRADE" or not target:
         return signal
 
-    # Dispatch to strategy-specific enrichment
+    # 分派到策略特定的增强函数
     if strategy == "SHORT_PUT_SPREAD":
         return enrich_short_put_spread(signal, market_data)
     elif strategy == "SHORT_CALL_SPREAD":
@@ -71,54 +71,54 @@ def enrich_signal(signal: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[s
     elif strategy == "IRON_CONDOR":
         return enrich_iron_condor(signal, market_data)
     else:
-        # Unknown strategy, return as-is
+        # 未知策略，直接返回
         return signal
 
 
 def enrich_short_put_spread(signal: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Enrich SHORT_PUT_SPREAD signal with legs.
+    为 SHORT_PUT_SPREAD 信号增强期权腿。
 
     Args:
-        signal: Signal with strike_short, strike_long, expiry
-        market_data: Market data for pricing
+        signal: 包含 strike_short, strike_long, expiry 的信号
+        market_data: 用于定价的市场数据
 
     Returns:
-        Signal with params.legs added
+        添加了 params.legs 的信号
     """
     params = signal["params"]
     target = signal["target"]
 
     strike_short = params.get("strike_short")
     strike_long = params.get("strike_long")
-    expiry_compact = params.get("expiry")  # Format: YYYYMMDD
+    expiry_compact = params.get("expiry")  # 格式: YYYYMMDD
 
     if not all([strike_short, strike_long, expiry_compact]):
-        # Missing required fields
+        # 缺少必需字段
         return signal
 
-    # Convert expiry format: YYYYMMDD -> YYYY-MM-DD
+    # 转换到期日格式: YYYYMMDD -> YYYY-MM-DD
     expiry = f"{expiry_compact[:4]}-{expiry_compact[4:6]}-{expiry_compact[6:8]}"
 
-    # Estimate option prices (simplified - would use real market data in production)
+    # 估算期权价格（简化版 - 生产环境应使用真实市场数据）
     quote = market_data.get("quotes", {}).get(target, {})
     underlying_price = quote.get("last", 0)
 
     if not underlying_price:
-        # Can't price without underlying
+        # 没有标的资产价格无法定价
         return signal
 
-    # Rough option pricing based on moneyness
-    # This is a placeholder - in production, use real option chain data
+    # 基于价值度的粗略期权定价
+    # 这是占位符 - 生产环境应使用真实期权链数据
     short_moneyness = strike_short / underlying_price
     long_moneyness = strike_long / underlying_price
 
-    # Estimate premiums (very rough approximation)
-    # OTM puts: higher strike = higher premium
+    # 估算权利金（非常粗略的近似）
+    # OTM PUT: 更高的 strike = 更高的权利金
     short_price = max(1.0, (1 - short_moneyness) * underlying_price * 0.05)
     long_price = max(0.5, (1 - long_moneyness) * underlying_price * 0.04)
 
-    # Create legs
+    # 创建期权腿
     legs = [
         {
             "action": "SELL",
@@ -144,12 +144,12 @@ def enrich_short_put_spread(signal: Dict[str, Any], market_data: Dict[str, Any])
         }
     ]
 
-    # Calculate risk
+    # 计算风险
     net_credit = (short_price - long_price) * 100
     max_risk = ((strike_short - strike_long) * 100) - net_credit
-    capital_required = max_risk * 1.2  # Add 20% buffer
+    capital_required = max_risk * 1.2  # 增加 20% 缓冲
 
-    # Update params
+    # 更新参数
     params["legs"] = legs
     params["max_risk"] = int(max_risk)
     params["capital_required"] = int(capital_required)
@@ -159,14 +159,14 @@ def enrich_short_put_spread(signal: Dict[str, Any], market_data: Dict[str, Any])
 
 def enrich_short_call_spread(signal: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Enrich SHORT_CALL_SPREAD signal with legs.
+    为 SHORT_CALL_SPREAD 信号增强期权腿。
 
     Args:
-        signal: Signal with call_strike_short, call_strike_long, expiry
-        market_data: Market data for pricing
+        signal: 包含 call_strike_short, call_strike_long, expiry 的信号
+        market_data: 用于定价的市场数据
 
     Returns:
-        Signal with params.legs added
+        添加了 params.legs 的信号
     """
     params = signal["params"]
     target = signal["target"]
@@ -186,7 +186,7 @@ def enrich_short_call_spread(signal: Dict[str, Any], market_data: Dict[str, Any]
     if not underlying_price:
         return signal
 
-    # Estimate call premiums
+    # 估算 CALL 权利金
     short_moneyness = strike_short / underlying_price
     long_moneyness = strike_long / underlying_price
 
@@ -231,14 +231,14 @@ def enrich_short_call_spread(signal: Dict[str, Any], market_data: Dict[str, Any]
 
 def enrich_iron_condor(signal: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Enrich IRON_CONDOR signal with legs.
+    为 IRON_CONDOR 信号增强期权腿。
 
     Args:
-        signal: Signal with put and call strikes
-        market_data: Market data for pricing
+        signal: 包含 PUT 和 CALL strike 的信号
+        market_data: 用于定价的市场数据
 
     Returns:
-        Signal with params.legs added (4 legs total)
+        添加了 params.legs 的信号（共 4 条腿）
     """
     params = signal["params"]
     target = signal["target"]
@@ -260,14 +260,14 @@ def enrich_iron_condor(signal: Dict[str, Any], market_data: Dict[str, Any]) -> D
     if not underlying_price:
         return signal
 
-    # Estimate prices for all 4 legs
+    # 估算所有 4 条腿的价格
     put_short_price = max(1.0, (1 - put_strike_short / underlying_price) * underlying_price * 0.05)
     put_long_price = max(0.5, (1 - put_strike_long / underlying_price) * underlying_price * 0.04)
     call_short_price = max(1.0, (call_strike_short / underlying_price - 1) * underlying_price * 0.05)
     call_long_price = max(0.5, (call_strike_long / underlying_price - 1) * underlying_price * 0.04)
 
     legs = [
-        # Put spread
+        # PUT SPREAD
         {
             "action": "SELL",
             "contract": {"symbol": target, "expiry": expiry, "strike": int(put_strike_short), "right": "P"},
@@ -280,7 +280,7 @@ def enrich_iron_condor(signal: Dict[str, Any], market_data: Dict[str, Any]) -> D
             "quantity": 1,
             "price": round(put_long_price, 2)
         },
-        # Call spread
+        # CALL SPREAD
         {
             "action": "SELL",
             "contract": {"symbol": target, "expiry": expiry, "strike": int(call_strike_short), "right": "C"},
@@ -313,13 +313,13 @@ def enrich_iron_condor(signal: Dict[str, Any], market_data: Dict[str, Any]) -> D
 
 def validate_enriched_signal(signal: Dict[str, Any]) -> bool:
     """
-    Validate that an enriched signal has all required fields.
+    验证增强后的信号是否包含所有必需字段。
 
     Args:
-        signal: Enriched signal
+        signal: 增强后的信号
 
     Returns:
-        True if valid, False otherwise
+        如果有效返回 True，否则返回 False
     """
     if signal.get("signal") == "NO_TRADE":
         return True
@@ -330,7 +330,7 @@ def validate_enriched_signal(signal: Dict[str, Any]) -> bool:
     if not legs:
         return False
 
-    # Check all legs have required fields
+    # 检查所有期权腿是否包含必需字段
     for leg in legs:
         if not all(k in leg for k in ["action", "contract", "quantity", "price"]):
             return False
@@ -339,7 +339,7 @@ def validate_enriched_signal(signal: Dict[str, Any]) -> bool:
         if not all(k in contract for k in ["symbol", "expiry", "strike", "right"]):
             return False
 
-    # Check risk calculations exist
+    # 检查风险计算是否存在
     if "max_risk" not in params or "capital_required" not in params:
         return False
 

@@ -1,7 +1,7 @@
 """
-Validated order execution through safety layer.
+通过安全层执行经过验证的订单。
 
-All orders MUST pass through this module. No bypasses allowed.
+所有订单必须通过此模块。不允许绕过。
 """
 
 import sys
@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
 
-# Add mcp-servers to path to import safety module
+# 将 mcp-servers 添加到路径以导入 safety 模块
 sys.path.append(str(Path(__file__).parent.parent / "mcp-servers" / "ibkr"))
 
 from safety import SafetyValidator, create_safety_validator
@@ -20,7 +20,7 @@ from data_lake.db_helpers import log_trade, log_safety_event
 
 @dataclass
 class OrderResult:
-    """Result of order execution attempt."""
+    """订单执行尝试的结果"""
     success: bool
     trade_id: Optional[int] = None
     order_id: Optional[int] = None
@@ -28,12 +28,12 @@ class OrderResult:
     message: str = ""
 
 
-# Global safety validator instance
+# 全局安全验证器实例
 _safety_validator: Optional[SafetyValidator] = None
 
 
 def get_safety_validator() -> SafetyValidator:
-    """Get or create safety validator instance."""
+    """获取或创建安全验证器实例"""
     global _safety_validator
     if _safety_validator is None:
         _safety_validator = create_safety_validator()
@@ -49,18 +49,18 @@ def place_order_with_guard(
     metadata: Optional[Dict] = None
 ) -> OrderResult:
     """
-    Place order with safety validation.
+    通过安全验证下单
 
-    SAFETY LAYER ENFORCEMENT:
-    - All orders pass through SafetyValidator
-    - Rejects orders exceeding limits
-    - Logs all attempts (approved + rejected)
-    - No bypasses allowed
+    安全层强制执行：
+    - 所有订单都通过 SafetyValidator
+    - 拒绝超出限制的订单
+    - 记录所有尝试（批准 + 拒绝）
+    - 不允许绕过
 
     Args:
-        symbol: Underlying ticker (e.g., "AAPL")
-        strategy: Strategy name (e.g., "PUT_SPREAD", "IRON_CONDOR")
-        legs: List of order legs with structure:
+        symbol: 标的代码（例如 "AAPL"）
+        strategy: 策略名称（例如 "PUT_SPREAD", "IRON_CONDOR"）
+        legs: 订单 leg 列表，结构如下：
             [
                 {
                     "action": "SELL",
@@ -68,16 +68,16 @@ def place_order_with_guard(
                     "expiry": "20251128",
                     "quantity": 1,
                     "price": 2.50,
-                    "contract_type": "PUT"  # or "CALL"
+                    "contract_type": "PUT"  # 或 "CALL"
                 },
                 ...
             ]
-        max_risk: Maximum risk for this trade ($)
-        capital_required: Capital to deploy ($)
-        metadata: Optional context (reasoning, confidence, signal_source, etc.)
+        max_risk: 此交易的最大风险（美元）
+        capital_required: 需要部署的资金（美元）
+        metadata: 可选上下文（推理、置信度、信号源等）
 
     Returns:
-        OrderResult with status, trade_id, order_id (if successful), or error
+        OrderResult，包含状态、trade_id、order_id（如果成功）或错误信息
 
     Example:
         >>> result = place_order_with_guard(
@@ -96,7 +96,7 @@ def place_order_with_guard(
         >>> print(result.success)
         True
     """
-    # Extract metadata fields
+    # 提取元数据字段
     if metadata is None:
         metadata = {}
 
@@ -104,7 +104,7 @@ def place_order_with_guard(
     confidence = metadata.get("confidence")
     reasoning = metadata.get("reasoning")
 
-    # Construct order dict for safety validation
+    # 构建订单字典用于安全验证
     order_dict = {
         "symbol": symbol,
         "strategy": strategy,
@@ -113,12 +113,12 @@ def place_order_with_guard(
         "capital_required": capital_required
     }
 
-    # CRITICAL: Safety validation (CANNOT BE BYPASSED)
+    # 关键：安全验证（不能绕过）
     safety_validator = get_safety_validator()
     is_valid, error_msg = safety_validator.validate_order(order_dict)
 
     if not is_valid:
-        # Log rejected order
+        # 记录被拒绝的订单
         trade_id = log_trade(
             symbol=symbol,
             strategy=strategy,
@@ -132,7 +132,7 @@ def place_order_with_guard(
             metadata=metadata
         )
 
-        # Log safety event
+        # 记录安全事件
         log_safety_event(
             event_type="ORDER_REJECTED",
             details={
@@ -150,11 +150,11 @@ def place_order_with_guard(
             success=False,
             trade_id=trade_id,
             error=error_msg,
-            message=f"Order rejected by safety layer: {error_msg}"
+            message=f"订单被安全层拒绝 (ORDER_REJECTED): {error_msg}"
         )
 
-    # Order passed safety validation
-    # Log as PENDING before IBKR submission
+    # 订单通过安全验证
+    # 在 IBKR 提交之前记录为 PENDING
     trade_id = log_trade(
         symbol=symbol,
         strategy=strategy,
@@ -168,9 +168,9 @@ def place_order_with_guard(
         metadata=metadata
     )
 
-    # TODO: In actual implementation, submit to IBKR via MCP
-    # For now, simulate successful submission
-    # In production:
+    # TODO: 在实际实现中，通过 MCP 提交到 IBKR
+    # 目前，模拟成功提交
+    # 生产环境：
     # try:
     #     ibkr_order = build_ibkr_order(symbol, legs, strategy)
     #     result = ibkr_mcp.place_order(
@@ -190,8 +190,8 @@ def place_order_with_guard(
     return OrderResult(
         success=True,
         trade_id=trade_id,
-        order_id=None,  # Would be IBKR order ID in production
-        message=f"Order validated and logged (trade_id={trade_id}). IBKR submission pending."
+        order_id=None,  # 生产环境中将是 IBKR order ID
+        message=f"订单已验证并记录（trade_id={trade_id}）。等待 IBKR 提交。"
     )
 
 
@@ -201,21 +201,21 @@ def build_ibkr_order(
     strategy: str
 ) -> Dict:
     """
-    Build IBKR-compatible order structure.
+    构建 IBKR 兼容的订单结构
 
-    This function would construct the actual order format required by IBKR API.
-    For now, it returns a placeholder structure.
+    此函数将构建 IBKR API 所需的实际订单格式。
+    目前，它返回一个占位符结构。
 
     Args:
-        symbol: Underlying symbol
-        legs: Order legs
-        strategy: Strategy name
+        symbol: 标的代码
+        legs: 订单 legs
+        strategy: 策略名称
 
     Returns:
-        IBKR order dictionary
+        IBKR 订单字典
     """
-    # Placeholder for IBKR order construction
-    # In production, this would use ib_insync to build proper Order and Contract objects
+    # IBKR 订单构建的占位符
+    # 在生产环境中，这将使用 ib_insync 构建适当的 Order 和 Contract 对象
     return {
         "symbol": symbol,
         "strategy": strategy,
@@ -227,38 +227,38 @@ def build_ibkr_order(
 
 def validate_order_format(legs: List[Dict]) -> tuple[bool, Optional[str]]:
     """
-    Validate order leg format.
+    验证订单 leg 格式
 
     Args:
-        legs: Order legs to validate
+        legs: 要验证的订单 legs
 
     Returns:
         (is_valid, error_message)
     """
     if not legs:
-        return False, "Order must have at least one leg"
+        return False, "订单必须至少有一个 leg (INVALID_LEGS)"
 
     required_fields = ["action", "strike", "expiry", "quantity", "price", "contract_type"]
 
     for i, leg in enumerate(legs):
         for field in required_fields:
             if field not in leg:
-                return False, f"Leg {i+1} missing required field: {field}"
+                return False, f"Leg {i+1} 缺少必需字段 (MISSING_FIELD): {field}"
 
-        # Validate action
+        # 验证 action
         if leg["action"] not in ["BUY", "SELL"]:
-            return False, f"Leg {i+1} has invalid action: {leg['action']}"
+            return False, f"Leg {i+1} 的 action 无效 (INVALID_ACTION): {leg['action']}"
 
-        # Validate contract type
+        # 验证 contract type
         if leg["contract_type"] not in ["CALL", "PUT"]:
-            return False, f"Leg {i+1} has invalid contract_type: {leg['contract_type']}"
+            return False, f"Leg {i+1} 的 contract_type 无效 (INVALID_CONTRACT_TYPE): {leg['contract_type']}"
 
-        # Validate quantities are positive
+        # 验证数量为正数
         if leg["quantity"] <= 0:
-            return False, f"Leg {i+1} has invalid quantity: {leg['quantity']}"
+            return False, f"Leg {i+1} 的数量无效 (INVALID_QUANTITY): {leg['quantity']}"
 
-        # Validate prices are positive
+        # 验证价格为正数
         if leg["price"] < 0:
-            return False, f"Leg {i+1} has invalid price: {leg['price']}"
+            return False, f"Leg {i+1} 的价格无效 (INVALID_PRICE): {leg['price']}"
 
     return True, None

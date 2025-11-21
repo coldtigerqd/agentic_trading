@@ -1,9 +1,8 @@
 """
-Automated watchlist management with performance-based scoring and rotation.
+基于性能的自动观察列表管理与轮换。
 
-Manages symbol watchlist by tracking trading performance and rotating
-underperformers. Uses composite scoring with Sharpe ratio, win rate,
-average P&L, and trade frequency.
+通过跟踪交易性能和轮换表现不佳的标的来管理标的观察列表。
+使用 Sharpe 比率、胜率、平均盈亏和交易频率的综合评分。
 """
 
 import sqlite3
@@ -13,76 +12,76 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import warnings
 
-# Database path
+# 数据库路径
 DB_PATH = Path(__file__).parent.parent / "data_lake" / "trades.db"
 
-# Sector mapping for diversification enforcement
+# 板块映射，用于强制多样化
 SECTOR_MAP = {
-    # Broad Market ETFs
+    # 广泛市场 ETF
     "SPY": "Broad Market", "QQQ": "Technology", "IWM": "Broad Market",
     "DIA": "Broad Market", "VTI": "Broad Market",
 
-    # Sector ETFs
+    # 板块 ETF
     "XLF": "Financial", "XLE": "Energy", "XLK": "Technology",
     "XLV": "Healthcare", "XLI": "Industrial", "XLP": "Consumer Staples",
     "XLY": "Consumer Discretionary", "XLU": "Utilities", "XLRE": "Real Estate",
     "XLB": "Materials", "XLC": "Communication",
 
-    # Tech Stocks
+    # 科技股
     "AAPL": "Technology", "MSFT": "Technology", "GOOGL": "Technology",
     "META": "Technology", "NVDA": "Technology", "AMD": "Technology",
     "TSLA": "Consumer Discretionary", "NFLX": "Communication",
     "AMZN": "Consumer Discretionary", "SHOP": "Technology",
 
-    # Semiconductor
+    # 半导体
     "TSM": "Technology", "INTC": "Technology", "QCOM": "Technology",
     "AVGO": "Technology", "MU": "Technology",
 
-    # Other
+    # 其他
     "JPM": "Financial", "BAC": "Financial", "GS": "Financial",
     "XOM": "Energy", "CVX": "Energy",
 }
 
-# Default sector for unmapped symbols
+# 未映射标的的默认板块
 DEFAULT_SECTOR = "Other"
 
-# Configuration constants
+# 配置常量
 SHARPE_WEIGHT = 0.40
 WIN_RATE_WEIGHT = 0.30
 AVG_PNL_WEIGHT = 0.20
 FREQ_WEIGHT = 0.10
 
-MAX_SECTOR_PCT = 0.30  # 30% max per sector
-MAX_CHURN_PER_WEEK = 3  # Max 3 symbol changes per week
-ROTATION_PCT = 0.20  # Bottom 20% eligible for rotation
-MIN_TRADES_FOR_SCORING = 5  # Minimum trades needed for valid score
+MAX_SECTOR_PCT = 0.30  # 每个板块最多 30%
+MAX_CHURN_PER_WEEK = 3  # 每周最多 3 次标的更改
+ROTATION_PCT = 0.20  # 底部 20% 符合轮换条件
+MIN_TRADES_FOR_SCORING = 5  # 有效评分所需的最少交易数
 
 
 def get_symbol_sector(symbol: str) -> str:
     """
-    Get sector for a symbol.
+    获取标的所属板块。
 
     Args:
-        symbol: Trading symbol
+        symbol: 交易标的
 
     Returns:
-        Sector name
+        板块名称
     """
     return SECTOR_MAP.get(symbol, DEFAULT_SECTOR)
 
 
 def calculate_sharpe_ratio(pnls: List[float], risk_free_rate: float = 0.0) -> float:
     """
-    Calculate Sharpe ratio from P&L series.
+    从盈亏序列计算 Sharpe 比率。
 
-    Sharpe = (mean_return - risk_free_rate) / std_return
+    Sharpe = (平均回报 - 无风险利率) / 回报标准差
 
     Args:
-        pnls: List of profit/loss values
-        risk_free_rate: Risk-free rate (annualized, default 0%)
+        pnls: 盈亏值列表
+        risk_free_rate: 无风险利率（年化，默认 0%）
 
     Returns:
-        Sharpe ratio (higher is better)
+        Sharpe 比率（越高越好）
     """
     if len(pnls) < 2:
         return 0.0
@@ -104,37 +103,37 @@ def calculate_symbol_score(
     db_path: Optional[Path] = None
 ) -> Dict:
     """
-    Calculate composite performance score for a symbol.
+    计算标的的综合性能评分。
 
-    Score components (weighted):
-    - Sharpe ratio: 40%
-    - Win rate: 30%
-    - Average P&L: 20%
-    - Trade frequency: 10%
+    评分组成（加权）：
+    - Sharpe 比率：40%
+    - 胜率：30%
+    - 平均盈亏：20%
+    - 交易频率：10%
 
     Args:
-        symbol: Trading symbol to score
-        lookback_days: Number of days to look back for performance
-        db_path: Path to database (default: DB_PATH)
+        symbol: 要评分的交易标的
+        lookback_days: 回溯的天数
+        db_path: 数据库路径（默认：DB_PATH）
 
     Returns:
-        Dictionary with score components and composite score:
+        包含评分组成和综合评分的字典：
         {
             "symbol": str,
-            "score": float,  # 0-100 composite score
+            "score": float,  # 0-100 的综合评分
             "sharpe_ratio": float,
             "win_rate": float,  # 0.0-1.0
-            "avg_pnl": float,  # Average profit per trade
+            "avg_pnl": float,  # 每笔交易的平均利润
             "trade_count": int,
             "sector": str,
             "days_tracked": int,
-            "has_min_trades": bool  # Whether >= MIN_TRADES_FOR_SCORING
+            "has_min_trades": bool  # 是否 >= MIN_TRADES_FOR_SCORING
         }
     """
     if db_path is None:
         db_path = DB_PATH
 
-    # Query closed trades for this symbol within lookback period
+    # 在回溯期内查询此标的的已关闭交易
     start_date = (datetime.now() - timedelta(days=lookback_days)).isoformat()
 
     conn = sqlite3.connect(str(db_path))
@@ -154,7 +153,7 @@ def calculate_symbol_score(
     trades = cursor.fetchall()
     conn.close()
 
-    # Default result for symbols with no trades
+    # 没有交易的标的的默认结果
     if len(trades) == 0:
         return {
             "symbol": symbol,
@@ -168,30 +167,30 @@ def calculate_symbol_score(
             "has_min_trades": False
         }
 
-    # Extract P&L values
+    # 提取盈亏值
     pnls = [trade["pnl"] for trade in trades]
     trade_count = len(pnls)
 
-    # Calculate components
+    # 计算组成部分
     sharpe = calculate_sharpe_ratio(pnls)
     win_count = sum(1 for pnl in pnls if pnl > 0)
     win_rate = win_count / trade_count if trade_count > 0 else 0.0
     avg_pnl = np.mean(pnls)
 
-    # Normalize components to 0-100 scale
-    # Sharpe: -3 to +3 → 0 to 100
+    # 将组成部分归一化到 0-100 范围
+    # Sharpe：-3 到 +3 → 0 到 100
     sharpe_normalized = np.clip((sharpe + 3) / 6 * 100, 0, 100)
 
-    # Win rate: 0% to 100% → 0 to 100
+    # 胜率：0% 到 100% → 0 到 100
     win_rate_normalized = win_rate * 100
 
-    # Avg P&L: -500 to +500 → 0 to 100
+    # 平均盈亏：-500 到 +500 → 0 到 100
     avg_pnl_normalized = np.clip((avg_pnl + 500) / 1000 * 100, 0, 100)
 
-    # Trade frequency: 0 to 20 trades → 0 to 100
+    # 交易频率：0 到 20 笔交易 → 0 到 100
     freq_normalized = np.clip(trade_count / 20 * 100, 0, 100)
 
-    # Composite score (weighted average)
+    # 综合评分（加权平均）
     composite_score = (
         sharpe_normalized * SHARPE_WEIGHT +
         win_rate_normalized * WIN_RATE_WEIGHT +
@@ -214,13 +213,13 @@ def calculate_symbol_score(
 
 def get_current_watchlist(db_path: Optional[Path] = None) -> List[str]:
     """
-    Get current active watchlist symbols.
+    获取当前活跃的观察列表标的。
 
     Args:
-        db_path: Path to database (default: DB_PATH)
+        db_path: 数据库路径（默认：DB_PATH）
 
     Returns:
-        List of active symbols
+        活跃标的列表
     """
     if db_path is None:
         db_path = DB_PATH
@@ -244,14 +243,14 @@ def get_current_watchlist(db_path: Optional[Path] = None) -> List[str]:
 
 def get_recent_churn(days: int = 7, db_path: Optional[Path] = None) -> int:
     """
-    Count watchlist changes in the last N days.
+    统计最近 N 天内的观察列表变动次数。
 
     Args:
-        days: Number of days to look back
-        db_path: Path to database (default: DB_PATH)
+        days: 回溯天数
+        db_path: 数据库路径（默认：DB_PATH）
 
     Returns:
-        Number of symbols added/removed in period
+        期间内添加/移除的标的数量
     """
     if db_path is None:
         db_path = DB_PATH
@@ -262,7 +261,7 @@ def get_recent_churn(days: int = 7, db_path: Optional[Path] = None) -> int:
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # Count additions
+    # 统计添加
     cursor.execute("""
         SELECT COUNT(*) as count
         FROM watchlist
@@ -271,7 +270,7 @@ def get_recent_churn(days: int = 7, db_path: Optional[Path] = None) -> int:
 
     additions = cursor.fetchone()["count"]
 
-    # Count removals (active=0 with last_updated in period)
+    # 统计移除（active=0 且 last_updated 在期间内）
     cursor.execute("""
         SELECT COUNT(*) as count
         FROM watchlist
@@ -293,29 +292,29 @@ def update_watchlist(
     db_path: Optional[Path] = None
 ) -> Dict:
     """
-    Update watchlist by rotating underperformers.
+    通过轮换表现不佳者来更新观察列表。
 
-    Algorithm:
-    1. Score all current watchlist symbols
-    2. Identify bottom 20% performers (with min trades)
-    3. Score candidate pool
-    4. Replace underperformers with top candidates
-    5. Enforce sector diversification (max 30% per sector)
-    6. Enforce churn limit (max 3 changes per week)
+    算法：
+    1. 评分所有当前观察列表标的
+    2. 识别底部 20% 的表现者（具有最小交易数）
+    3. 评分候选池
+    4. 用顶级候选者替换表现不佳者
+    5. 强制执行板块多样化（每个板块最多 30%）
+    6. 强制执行变动限制（每周最多 3 次更改）
 
     Args:
-        candidate_pool: List of candidate symbols to consider
-        max_watchlist_size: Maximum watchlist size (default 20)
-        lookback_days: Days to look back for performance (default 30)
-        enforce_sector_limits: Whether to enforce sector diversification
-        db_path: Path to database (default: DB_PATH)
+        candidate_pool: 要考虑的候选标的列表
+        max_watchlist_size: 最大观察列表大小（默认 20）
+        lookback_days: 回溯性能的天数（默认 30）
+        enforce_sector_limits: 是否强制执行板块多样化
+        db_path: 数据库路径（默认：DB_PATH）
 
     Returns:
-        Dictionary with update results:
+        包含更新结果的字典：
         {
             "added": List[str],
             "removed": List[str],
-            "scores": Dict[str, Dict],  # symbol -> score details
+            "scores": Dict[str, Dict],  # symbol -> score 详情
             "churn_limit_reached": bool,
             "sector_distribution": Dict[str, int]
         }
@@ -323,14 +322,14 @@ def update_watchlist(
     if db_path is None:
         db_path = DB_PATH
 
-    # Check churn limit
+    # 检查变动限制
     recent_churn = get_recent_churn(days=7, db_path=db_path)
     churn_available = MAX_CHURN_PER_WEEK - recent_churn
 
     if churn_available <= 0:
         warnings.warn(
-            f"Churn limit reached ({recent_churn}/{MAX_CHURN_PER_WEEK} changes this week). "
-            "No watchlist updates performed."
+            f"已达到变动限制（本周 {recent_churn}/{MAX_CHURN_PER_WEEK} 次更改）。"
+            "未执行观察列表更新。"
         )
         return {
             "added": [],
@@ -340,23 +339,23 @@ def update_watchlist(
             "sector_distribution": {}
         }
 
-    # Get current watchlist
+    # 获取当前观察列表
     current_symbols = get_current_watchlist(db_path)
 
-    # Score current watchlist
+    # 评分当前观察列表
     current_scores = {}
     for symbol in current_symbols:
         score_data = calculate_symbol_score(symbol, lookback_days, db_path)
         current_scores[symbol] = score_data
 
-    # Identify underperformers (bottom 20% with min trades)
+    # 识别表现不佳者（底部 20%，具有最小交易数）
     scored_symbols = [
         (sym, data) for sym, data in current_scores.items()
         if data["has_min_trades"]
     ]
 
     if len(scored_symbols) == 0:
-        # No symbols with enough trades to score
+        # 没有足够交易数的标的可以评分
         return {
             "added": [],
             "removed": [],
@@ -367,43 +366,43 @@ def update_watchlist(
 
     scored_symbols.sort(key=lambda x: x[1]["score"])
     rotation_count = max(1, int(len(scored_symbols) * ROTATION_PCT))
-    rotation_count = min(rotation_count, churn_available)  # Respect churn limit
+    rotation_count = min(rotation_count, churn_available)  # 遵守变动限制
 
     underperformers = [sym for sym, _ in scored_symbols[:rotation_count]]
 
-    # Score candidate pool
+    # 评分候选池
     candidate_scores = {}
     for symbol in candidate_pool:
-        if symbol not in current_symbols:  # Don't re-add current symbols
+        if symbol not in current_symbols:  # 不重新添加当前标的
             score_data = calculate_symbol_score(symbol, lookback_days, db_path)
             candidate_scores[symbol] = score_data
 
-    # Rank candidates by score
+    # 按评分排名候选者
     ranked_candidates = sorted(
         candidate_scores.items(),
         key=lambda x: x[1]["score"],
         reverse=True
     )
 
-    # Select replacements (respecting sector limits if enabled)
+    # 选择替换者（如果启用，遵守板块限制）
     added = []
     removed = []
 
-    # Calculate current sector distribution
+    # 计算当前板块分布
     remaining_symbols = [s for s in current_symbols if s not in underperformers]
     sector_counts = {}
     for symbol in remaining_symbols:
         sector = get_symbol_sector(symbol)
         sector_counts[sector] = sector_counts.get(sector, 0) + 1
 
-    # Add candidates to fill slots
+    # 添加候选者以填补空位
     max_total_symbols = min(max_watchlist_size, len(current_symbols))
 
     for candidate, score_data in ranked_candidates:
         if len(added) >= len(underperformers):
-            break  # Filled all open slots
+            break  # 已填满所有空位
 
-        # Check sector limit
+        # 检查板块限制
         if enforce_sector_limits:
             sector = score_data["sector"]
             current_sector_count = sector_counts.get(sector, 0)
@@ -415,23 +414,23 @@ def update_watchlist(
                 sector_pct = (current_sector_count + 1) / projected_total
 
             if sector_pct > MAX_SECTOR_PCT:
-                continue  # Skip, would violate sector limit
+                continue  # 跳过，会违反板块限制
 
-        # Add candidate
+        # 添加候选者
         added.append(candidate)
         sector = score_data["sector"]
         sector_counts[sector] = sector_counts.get(sector, 0) + 1
 
-    # Only remove as many underperformers as we can replace
+    # 只移除我们可以替换的表现不佳者
     removed = underperformers[:len(added)]
 
-    # Update database
+    # 更新数据库
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
     now = datetime.now().isoformat()
 
     try:
-        # Remove underperformers
+        # 移除表现不佳者
         for symbol in removed:
             cursor.execute("""
                 UPDATE watchlist
@@ -439,24 +438,24 @@ def update_watchlist(
                 WHERE symbol = ?
             """, (now, symbol))
 
-        # Add new symbols
+        # 添加新标的
         for symbol in added:
-            # Check if symbol already exists (was previously removed)
+            # 检查标的是否已存在（之前被移除）
             cursor.execute("SELECT symbol FROM watchlist WHERE symbol = ?", (symbol,))
             exists = cursor.fetchone() is not None
 
             if exists:
-                # Reactivate
+                # 重新激活
                 cursor.execute("""
                     UPDATE watchlist
                     SET active = 1, last_updated = ?, priority = 5
                     WHERE symbol = ?
                 """, (now, symbol))
             else:
-                # Insert new
+                # 插入新标的
                 cursor.execute("""
                     INSERT INTO watchlist (symbol, added_at, active, priority, notes)
-                    VALUES (?, ?, 1, 5, 'Auto-added by watchlist manager')
+                    VALUES (?, ?, 1, 5, '由观察列表管理器自动添加')
                 """, (symbol, now))
 
         conn.commit()
@@ -466,7 +465,7 @@ def update_watchlist(
     finally:
         conn.close()
 
-    # Merge scores
+    # 合并评分
     all_scores = {**current_scores, **candidate_scores}
 
     return {
@@ -483,21 +482,21 @@ def get_watchlist_performance_report(
     db_path: Optional[Path] = None
 ) -> Dict:
     """
-    Generate performance report for current watchlist.
+    生成当前观察列表的性能报告。
 
     Args:
-        lookback_days: Days to look back for performance
-        db_path: Path to database (default: DB_PATH)
+        lookback_days: 回溯性能的天数
+        db_path: 数据库路径（默认：DB_PATH）
 
     Returns:
-        Dictionary with performance metrics:
+        包含性能指标的字典：
         {
-            "symbol_scores": List[Dict],  # Sorted by score (desc)
+            "symbol_scores": List[Dict],  # 按评分排序（降序）
             "avg_score": float,
             "total_trades": int,
             "sector_distribution": Dict[str, int],
-            "underperformers": List[str],  # Bottom 20%
-            "top_performers": List[str]  # Top 20%
+            "underperformers": List[str],  # 底部 20%
+            "top_performers": List[str]  # 顶部 20%
         }
     """
     if db_path is None:
@@ -505,7 +504,7 @@ def get_watchlist_performance_report(
 
     current_symbols = get_current_watchlist(db_path)
 
-    # Score all symbols
+    # 评分所有标的
     scores = []
     total_trades = 0
     sector_dist = {}
@@ -518,13 +517,13 @@ def get_watchlist_performance_report(
         sector = score_data["sector"]
         sector_dist[sector] = sector_dist.get(sector, 0) + 1
 
-    # Sort by score
+    # 按评分排序
     scores.sort(key=lambda x: x["score"], reverse=True)
 
-    # Calculate average score
+    # 计算平均评分
     avg_score = np.mean([s["score"] for s in scores]) if scores else 0.0
 
-    # Identify top and bottom performers
+    # 识别顶部和底部表现者
     count = len(scores)
     top_20_count = max(1, int(count * 0.2))
     bottom_20_count = max(1, int(count * 0.2))
@@ -551,24 +550,24 @@ def add_to_watchlist(
     db_path: Optional[Path] = None
 ) -> Dict:
     """
-    Add a symbol to the watchlist with automatic data backfill.
+    将标的添加到观察列表并自动回填数据。
 
     Args:
-        symbol: Trading symbol to add
-        priority: Priority level (1-10, higher = more important)
-        notes: Optional notes about the symbol
-        auto_backfill: Whether to trigger automatic backfill (default: True)
-        backfill_days: Days of history to backfill (default: 60)
-        db_path: Path to database (default: DB_PATH)
+        symbol: 要添加的交易标的
+        priority: 优先级（1-10，越高越重要）
+        notes: 关于标的的可选备注
+        auto_backfill: 是否触发自动回填（默认：True）
+        backfill_days: 要回填的历史天数（默认：60）
+        db_path: 数据库路径（默认：DB_PATH）
 
     Returns:
-        Dictionary with add result:
+        包含添加结果的字典：
         {
             "symbol": str,
             "status": str,  # "ADDED", "ALREADY_EXISTS", "REACTIVATED"
             "priority": int,
             "backfill_triggered": bool,
-            "backfill_info": Dict  # Backfill task details
+            "backfill_info": Dict  # 回填任务详情
         }
     """
     if db_path is None:
@@ -580,16 +579,16 @@ def add_to_watchlist(
     now = datetime.now().isoformat()
 
     try:
-        # Check if symbol already exists
+        # 检查标的是否已存在
         cursor.execute("SELECT * FROM watchlist WHERE symbol = ?", (symbol,))
         existing = cursor.fetchone()
 
         if existing:
             if existing["active"] == 1:
                 status = "ALREADY_EXISTS"
-                print(f"Symbol {symbol} already in active watchlist")
+                print(f"标的 {symbol} 已在活跃观察列表中")
             else:
-                # Reactivate
+                # 重新激活
                 cursor.execute("""
                     UPDATE watchlist
                     SET active = 1, last_updated = ?, priority = ?, notes = ?
@@ -597,16 +596,16 @@ def add_to_watchlist(
                 """, (now, priority, notes or existing["notes"], symbol))
                 conn.commit()
                 status = "REACTIVATED"
-                print(f"Symbol {symbol} reactivated in watchlist")
+                print(f"标的 {symbol} 已在观察列表中重新激活")
         else:
-            # Insert new
+            # 插入新标的
             cursor.execute("""
                 INSERT INTO watchlist (symbol, added_at, active, priority, notes)
                 VALUES (?, ?, 1, ?, ?)
             """, (symbol, now, priority, notes or ""))
             conn.commit()
             status = "ADDED"
-            print(f"Symbol {symbol} added to watchlist")
+            print(f"标的 {symbol} 已添加到观察列表")
 
     except Exception as e:
         conn.rollback()
@@ -615,7 +614,7 @@ def add_to_watchlist(
     finally:
         conn.close()
 
-    # Trigger automatic backfill if enabled
+    # 如果启用，触发自动回填
     backfill_info = None
     backfill_triggered = False
 
@@ -628,7 +627,7 @@ def add_to_watchlist(
             days=backfill_days
         )
         backfill_triggered = True
-        print(f"  → Backfill queued: {backfill_days} days, {backfill_info['estimated_api_calls']} API calls")
+        print(f"  → 回填已排队：{backfill_days} 天，{backfill_info['estimated_api_calls']} 次 API 调用")
 
     return {
         "symbol": symbol,
@@ -644,14 +643,14 @@ def remove_from_watchlist(
     db_path: Optional[Path] = None
 ) -> Dict:
     """
-    Remove (deactivate) a symbol from the watchlist.
+    从观察列表中移除（停用）标的。
 
     Args:
-        symbol: Trading symbol to remove
-        db_path: Path to database (default: DB_PATH)
+        symbol: 要移除的交易标的
+        db_path: 数据库路径（默认：DB_PATH）
 
     Returns:
-        Dictionary with removal result:
+        包含移除结果的字典：
         {
             "symbol": str,
             "status": str,  # "REMOVED", "NOT_FOUND", "ALREADY_INACTIVE"
@@ -665,7 +664,7 @@ def remove_from_watchlist(
     now = datetime.now().isoformat()
 
     try:
-        # Check if symbol exists
+        # 检查标的是否存在
         cursor.execute("SELECT active FROM watchlist WHERE symbol = ?", (symbol,))
         result = cursor.fetchone()
 
@@ -674,7 +673,7 @@ def remove_from_watchlist(
         elif result[0] == 0:
             status = "ALREADY_INACTIVE"
         else:
-            # Deactivate
+            # 停用
             cursor.execute("""
                 UPDATE watchlist
                 SET active = 0, last_updated = ?
