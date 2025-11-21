@@ -1,6 +1,6 @@
 {
-  "template": "breakout_scout",
-  "name": "breakout_scout_tech",
+  "id": "breakout_scout_tech",
+  "template": "breakout_scout.md",
   "description": "Breakout strategy targeting high-volatility tech stocks after consolidation",
   "priority": 7,
   "enabled": true,

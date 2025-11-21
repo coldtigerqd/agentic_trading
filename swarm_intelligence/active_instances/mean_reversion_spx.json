@@ -1,6 +1,6 @@
 {
-  "template": "mean_reversion",
-  "name": "mean_reversion_spx",
+  "id": "mean_reversion_spx",
+  "template": "mean_reversion.md",
   "description": "Mean reversion strategy targeting SPX sector ETFs in range-bound conditions",
   "priority": 6,
   "enabled": true,

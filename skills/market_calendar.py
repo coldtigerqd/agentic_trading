@@ -1,8 +1,8 @@
 """
-Market Calendar and Trading Hours Detection
+市场日历和交易时段检测
 
-Detect US stock market hours, holidays, and trading sessions.
-Helps optimize analysis timing and avoid wasted API calls during off-hours.
+检测美国股市交易时间、假期和交易时段。
+帮助优化分析时机并避免在非交易时段浪费 API 调用。
 """
 
 from datetime import datetime, time, timedelta
@@ -10,51 +10,51 @@ from typing import Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 import warnings
 
-# Eastern Time zone
+# 东部时区
 ET = ZoneInfo("America/New_York")
 
-# US Stock Market Hours (Eastern Time)
-MARKET_OPEN_TIME = time(9, 30)  # 9:30 AM ET
-MARKET_CLOSE_TIME = time(16, 0)  # 4:00 PM ET
-PREMARKET_OPEN_TIME = time(4, 0)  # 4:00 AM ET
-AFTERHOURS_CLOSE_TIME = time(20, 0)  # 8:00 PM ET
+# 美国股市交易时间（东部时间）
+MARKET_OPEN_TIME = time(9, 30)  # 上午 9:30 ET
+MARKET_CLOSE_TIME = time(16, 0)  # 下午 4:00 PM ET
+PREMARKET_OPEN_TIME = time(4, 0)  # 凌晨 4:00 AM ET
+AFTERHOURS_CLOSE_TIME = time(20, 0)  # 晚上 8:00 PM ET
 
-# Trading days (Monday=0 ... Sunday=6)
-TRADING_DAYS = [0, 1, 2, 3, 4]  # Monday through Friday
+# 交易日（周一=0 ... 周日=6）
+TRADING_DAYS = [0, 1, 2, 3, 4]  # 周一至周五
 
-# 2025 US Stock Market Holidays (NYSE/NASDAQ)
-# Source: https://www.nyse.com/markets/hours-calendars
+# 2025 年美国股市假期（NYSE/NASDAQ）
+# 来源: https://www.nyse.com/markets/hours-calendars
 MARKET_HOLIDAYS_2025 = [
-    "2025-01-01",  # New Year's Day
-    "2025-01-20",  # Martin Luther King Jr. Day
-    "2025-02-17",  # Presidents Day
-    "2025-04-18",  # Good Friday
-    "2025-05-26",  # Memorial Day
-    "2025-07-04",  # Independence Day
-    "2025-09-01",  # Labor Day
-    "2025-11-27",  # Thanksgiving Day
-    "2025-12-25",  # Christmas Day
+    "2025-01-01",  # 元旦
+    "2025-01-20",  # 马丁·路德·金纪念日
+    "2025-02-17",  # 总统日
+    "2025-04-18",  # 耶稣受难日
+    "2025-05-26",  # 阵亡将士纪念日
+    "2025-07-04",  # 独立日
+    "2025-09-01",  # 劳动节
+    "2025-11-27",  # 感恩节
+    "2025-12-25",  # 圣诞节
 ]
 
-# Early close days (1:00 PM ET close)
+# 提前收盘日（下午 1:00 PM ET 收盘）
 EARLY_CLOSE_DAYS_2025 = [
-    "2025-07-03",  # Day before Independence Day
-    "2025-11-28",  # Day after Thanksgiving
-    "2025-12-24",  # Christmas Eve
+    "2025-07-03",  # 独立日前一天
+    "2025-11-28",  # 感恩节后一天
+    "2025-12-24",  # 平安夜
 ]
 
-EARLY_CLOSE_TIME = time(13, 0)  # 1:00 PM ET
+EARLY_CLOSE_TIME = time(13, 0)  # 下午 1:00 PM ET
 
 
 def is_market_holiday(date: Optional[datetime] = None) -> bool:
     """
-    Check if a given date is a market holiday.
+    检查给定日期是否为市场假期。
 
-    Args:
-        date: Date to check (default: today)
+    参数:
+        date: 要检查的日期（默认：今天）
 
-    Returns:
-        True if market is closed for holiday
+    返回:
+        如果市场因假期休市则返回 True
     """
     if date is None:
         date = datetime.now(ET)
@@ -65,22 +65,22 @@ def is_market_holiday(date: Optional[datetime] = None) -> bool:
 
 def is_trading_day(date: Optional[datetime] = None) -> bool:
     """
-    Check if a given date is a trading day (not weekend or holiday).
+    检查给定日期是否为交易日（非周末或假期）。
 
-    Args:
-        date: Date to check (default: today)
+    参数:
+        date: 要检查的日期（默认：今天）
 
-    Returns:
-        True if market is open for trading
+    返回:
+        如果市场开放交易则返回 True
     """
     if date is None:
         date = datetime.now(ET)
 
-    # Check if weekend
+    # 检查是否为周末
     if date.weekday() not in TRADING_DAYS:
         return False
 
-    # Check if holiday
+    # 检查是否为假期
     if is_market_holiday(date):
         return False
 
@@ -89,13 +89,13 @@ def is_trading_day(date: Optional[datetime] = None) -> bool:
 
 def is_early_close_day(date: Optional[datetime] = None) -> bool:
     """
-    Check if a given date has early market close (1:00 PM ET).
+    检查给定日期是否为提前收盘日（下午 1:00 PM ET）。
 
-    Args:
-        date: Date to check (default: today)
+    参数:
+        date: 要检查的日期（默认：今天）
 
-    Returns:
-        True if market closes early
+    返回:
+        如果市场提前收盘则返回 True
     """
     if date is None:
         date = datetime.now(ET)
@@ -106,13 +106,13 @@ def is_early_close_day(date: Optional[datetime] = None) -> bool:
 
 def get_market_hours(date: Optional[datetime] = None) -> Dict:
     """
-    Get market hours for a specific date.
+    获取特定日期的市场交易时间。
 
-    Args:
-        date: Date to check (default: today)
+    参数:
+        date: 要检查的日期（默认：今天）
 
-    Returns:
-        Dictionary with market hours:
+    返回:
+        包含市场交易时间的字典:
         {
             "date": str,
             "is_trading_day": bool,
@@ -120,7 +120,7 @@ def get_market_hours(date: Optional[datetime] = None) -> Dict:
             "is_early_close": bool,
             "premarket_open": str,  # "04:00:00"
             "market_open": str,  # "09:30:00"
-            "market_close": str,  # "16:00:00" or "13:00:00"
+            "market_close": str,  # "16:00:00" 或 "13:00:00"
             "afterhours_close": str  # "20:00:00"
         }
     """
@@ -147,31 +147,31 @@ def get_market_hours(date: Optional[datetime] = None) -> Dict:
 
 def is_market_open(dt: Optional[datetime] = None) -> bool:
     """
-    Check if US stock market is currently open for regular trading.
+    检查美国股市当前是否开放常规交易。
 
-    Args:
-        dt: Datetime to check (default: now in Eastern Time)
+    参数:
+        dt: 要检查的日期时间（默认：东部时间当前时间）
 
-    Returns:
-        True if market is open for regular trading session
+    返回:
+        如果市场开放常规交易时段则返回 True
 
-    Note:
-        This function automatically converts to Eastern Time (ET).
+    注意:
+        此函数自动转换为东部时间（ET）。
     """
     if dt is None:
         dt = datetime.now(ET)
     elif dt.tzinfo is None:
-        # If naive datetime provided, assume it's ET
+        # 如果提供的是简单日期时间，假定为 ET
         dt = dt.replace(tzinfo=ET)
     else:
-        # Convert to ET if it's in a different timezone
+        # 如果是不同时区，转换为 ET
         dt = dt.astimezone(ET)
 
-    # Check if trading day
+    # 检查是否为交易日
     if not is_trading_day(dt):
         return False
 
-    # Check market hours
+    # 检查市场交易时间
     current_time = dt.time()
     close_time = EARLY_CLOSE_TIME if is_early_close_day(dt) else MARKET_CLOSE_TIME
 
@@ -180,13 +180,13 @@ def is_market_open(dt: Optional[datetime] = None) -> bool:
 
 def is_premarket(dt: Optional[datetime] = None) -> bool:
     """
-    Check if we're in pre-market hours (4:00 AM - 9:30 AM ET).
+    检查当前是否处于盘前时段（上午 4:00 - 9:30 AM ET）。
 
-    Args:
-        dt: Datetime to check (default: now in Eastern Time)
+    参数:
+        dt: 要检查的日期时间（默认：东部时间当前时间）
 
-    Returns:
-        True if in pre-market session
+    返回:
+        如果处于盘前时段则返回 True
     """
     if dt is None:
         dt = datetime.now(ET)
@@ -200,13 +200,13 @@ def is_premarket(dt: Optional[datetime] = None) -> bool:
 
 def is_afterhours(dt: Optional[datetime] = None) -> bool:
     """
-    Check if we're in after-hours trading (4:00 PM - 8:00 PM ET).
+    检查当前是否处于盘后交易时段（下午 4:00 PM - 8:00 PM ET）。
 
-    Args:
-        dt: Datetime to check (default: now)
+    参数:
+        dt: 要检查的日期时间（默认：当前时间）
 
-    Returns:
-        True if in after-hours session
+    返回:
+        如果处于盘后时段则返回 True
     """
     if dt is None:
         dt = datetime.now(ET)
@@ -222,22 +222,22 @@ def is_afterhours(dt: Optional[datetime] = None) -> bool:
 
 def get_market_session_info(dt: Optional[datetime] = None) -> Dict:
     """
-    Get comprehensive market session information.
+    获取全面的市场交易时段信息。
 
-    Args:
-        dt: Datetime to check (default: now)
+    参数:
+        dt: 要检查的日期时间（默认：当前时间）
 
-    Returns:
-        Dictionary with session info:
+    返回:
+        包含交易时段信息的字典:
         {
             "timestamp": str,
             "is_trading_day": bool,
             "session": str,  # "CLOSED", "PREMARKET", "REGULAR", "AFTERHOURS"
-            "market_open": bool,  # True if regular session
+            "market_open": bool,  # 如果为常规时段则为 True
             "is_holiday": bool,
             "is_early_close": bool,
-            "next_market_open": str,  # ISO timestamp
-            "time_to_open_minutes": int  # Minutes until next open
+            "next_market_open": str,  # ISO 时间戳
+            "time_to_open_minutes": int  # 距下次开盘的分钟数
         }
     """
     if dt is None:
@@ -247,7 +247,7 @@ def get_market_session_info(dt: Optional[datetime] = None) -> Dict:
     holiday = is_market_holiday(dt)
     early_close = is_early_close_day(dt)
 
-    # Determine session
+    # 确定交易时段
     if not trading_day:
         session = "CLOSED"
     elif is_premarket(dt):
@@ -259,7 +259,7 @@ def get_market_session_info(dt: Optional[datetime] = None) -> Dict:
     else:
         session = "CLOSED"
 
-    # Calculate next market open
+    # 计算下次开盘时间
     next_open, time_to_open = get_next_market_open(dt)
 
     return {
@@ -276,67 +276,68 @@ def get_market_session_info(dt: Optional[datetime] = None) -> Dict:
 
 def get_next_market_open(dt: Optional[datetime] = None) -> Tuple[Optional[datetime], int]:
     """
-    Get the next market open time.
+    获取下次市场开盘时间。
 
-    Args:
-        dt: Current datetime (default: now)
+    参数:
+        dt: 当前日期时间（默认：当前时间）
 
-    Returns:
-        Tuple of (next_open_datetime, minutes_until_open)
+    返回:
+        包含 (下次开盘日期时间, 距开盘分钟数) 的元组
     """
     if dt is None:
         dt = datetime.now(ET)
 
-    # If market is currently open, return now
+    # 如果市场当前开放，返回当前时间
     if is_market_open(dt):
         return dt, 0
 
-    # Start checking from current day
+    # 从当天开始检查
     check_date = dt
-    max_days_ahead = 10  # Don't search more than 10 days ahead
+    max_days_ahead = 10  # 不搜索超过 10 天
 
     for _ in range(max_days_ahead):
-        # If current time is before market open on a trading day
+        # 如果当前时间在交易日的开盘时间之前
         if is_trading_day(check_date):
-            market_open_dt = datetime.combine(check_date.date(), MARKET_OPEN_TIME)
+            market_open_dt = datetime.combine(check_date.date(), MARKET_OPEN_TIME, tzinfo=ET)
 
-            # If we're on a trading day but before open time
+            # 如果在交易日但在开盘时间之前
             if check_date.time() < MARKET_OPEN_TIME:
                 time_to_open = int((market_open_dt - check_date).total_seconds() / 60)
                 return market_open_dt, time_to_open
 
-        # Move to next day at market open time
+        # 移至下一天的开盘时间
         check_date = datetime.combine(
             check_date.date() + timedelta(days=1),
-            MARKET_OPEN_TIME
+            MARKET_OPEN_TIME,
+            tzinfo=ET
         )
 
-    # No market open found in next 10 days
-    warnings.warn("Could not find next market open within 10 days")
+    # 未来 10 天内未找到市场开盘时间
+    warnings.warn("未能在 10 天内找到下次市场开盘时间 (NO_MARKET_OPEN_FOUND)")
     return None, -1
 
 
 def get_recommended_analysis_frequency(session: str) -> str:
     """
-    Get recommended analysis frequency based on market session.
+    根据市场交易时段获取推荐的分析频率。
 
-    Args:
-        session: Market session ("CLOSED", "PREMARKET", "REGULAR", "AFTERHOURS")
+    参数:
+        session: 市场时段（"CLOSED", "PREMARKET", "REGULAR", "AFTERHOURS"）
 
-    Returns:
-        Recommended frequency as human-readable string
+    返回:
+        可读的推荐频率字符串
     """
     recommendations = {
-        "CLOSED": "Hourly or less frequent (market closed)",
-        "PREMARKET": "Every 5-15 minutes (low volume)",
-        "REGULAR": "Every 1-5 minutes (active trading)",
-        "AFTERHOURS": "Every 10-30 minutes (lower volume)"
+        "CLOSED": "每小时或更低频率（市场休市）",
+        "PREMARKET": "每 5-15 分钟（成交量低）",
+        "REGULAR": "每 1-5 分钟（活跃交易）",
+        "AFTERHOURS": "每 10-30 分钟（成交量较低）"
     }
 
-    return recommendations.get(session, "Every 5 minutes")
+    return recommendations.get(session, "每 5 分钟")
 
 
-# Export key functions
+# 导出关键函数
 __all__ = [
     "is_market_open",
     "is_trading_day",

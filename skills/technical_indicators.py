@@ -1,17 +1,17 @@
 """
-Technical Indicators Library for Agentic AlphaHive Runtime.
+Agentic AlphaHive 运行时技术指标库。
 
-Provides battle-tested technical analysis functions using NumPy vectorization
-for 10x+ performance improvement over naive Python loops.
+通过 NumPy 向量化提供久经考验的技术分析函数，
+相比原生 Python 循环实现 10 倍以上性能提升。
 
-All functions handle edge cases gracefully (NaN, insufficient data, invalid parameters)
-and follow industry-standard calculation methods.
+所有函数优雅处理边界情况（NaN、数据不足、无效参数），
+并遵循行业标准计算方法。
 
-Input Format:
-    bars: List[Dict] with keys ['open', 'high', 'low', 'close', 'volume', 'timestamp']
+输入格式:
+    bars: List[Dict] 包含键 ['open', 'high', 'low', 'close', 'volume', 'timestamp']
 
-Output Format:
-    NumPy arrays or dicts (depending on indicator complexity)
+输出格式:
+    NumPy 数组或字典（取决于指标复杂度）
 """
 
 import numpy as np
@@ -20,18 +20,18 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
 
-# ==================== HELPER FUNCTIONS ====================
+# ==================== 辅助函数 ====================
 
 def _extract_prices(bars: List[Dict], field: str = 'close') -> np.ndarray:
     """
-    Extract price array from bars with NaN handling.
+    从 K 线数据中提取价格数组，并处理 NaN 值。
 
     Args:
-        bars: List of OHLCV dictionaries
-        field: Price field to extract ('open', 'high', 'low', 'close', 'volume')
+        bars: OHLCV 字典列表
+        field: 要提取的价格字段 ('open', 'high', 'low', 'close', 'volume')
 
     Returns:
-        NumPy array of prices
+        价格的 NumPy 数组
     """
     if not bars:
         return np.array([])
@@ -40,51 +40,51 @@ def _extract_prices(bars: List[Dict], field: str = 'close') -> np.ndarray:
         prices = np.array([float(bar[field]) for bar in bars])
         return prices
     except (KeyError, ValueError, TypeError):
-        warnings.warn(f"Invalid data in field '{field}', returning empty array")
+        warnings.warn(f"字段 '{field}' 中存在无效数据，返回空数组 (INVALID_FIELD_DATA)")
         return np.array([])
 
 
 def _validate_period(bars: List[Dict], period: int, indicator_name: str) -> bool:
     """
-    Validate sufficient data for period-based calculations.
+    验证周期计算所需的数据是否充足。
 
     Args:
-        bars: List of OHLCV bars
-        period: Required period length
-        indicator_name: Name of indicator (for warning message)
+        bars: OHLCV K 线数据列表
+        period: 所需周期长度
+        indicator_name: 指标名称（用于警告消息）
 
     Returns:
-        True if sufficient data, False otherwise
+        如果数据充足返回 True，否则返回 False
     """
     if period <= 0:
         warnings.warn(
-            f"Invalid period for {indicator_name}: {period} (must be > 0)"
+            f"{indicator_name} 的周期无效: {period}（必须 > 0）(INVALID_PERIOD)"
         )
         return False
     if len(bars) < period:
         warnings.warn(
-            f"Insufficient data for {indicator_name}({period}): "
-            f"need {period} bars, got {len(bars)}"
+            f"{indicator_name}({period}) 数据不足: "
+            f"需要 {period} 根 K 线，实际 {len(bars)} 根 (INSUFFICIENT_DATA)"
         )
         return False
     return True
 
 
-# ==================== MOVING AVERAGES ====================
+# ==================== 移动平均线 ====================
 
 def calculate_sma(bars: List[Dict], period: int, field: str = 'close') -> np.ndarray:
     """
-    Calculate Simple Moving Average (SMA).
+    计算简单移动平均线 (SMA)。
 
-    Formula: SMA = sum(prices[-period:]) / period
+    公式: SMA = sum(prices[-period:]) / period
 
     Args:
-        bars: List of OHLCV bars
-        period: Number of periods for averaging
-        field: Price field to use (default: 'close')
+        bars: OHLCV K 线数据列表
+        period: 平均周期数
+        field: 使用的价格字段（默认: 'close'）
 
     Returns:
-        Array where first (period-1) values are NaN, rest are SMA values
+        数组，前 (period-1) 个值为 NaN，其余为 SMA 值
 
     Example:
         >>> bars = [{'close': 100}, {'close': 102}, {'close': 101}]
@@ -98,31 +98,31 @@ def calculate_sma(bars: List[Dict], period: int, field: str = 'close') -> np.nda
     if len(prices) == 0:
         return np.array([])
 
-    # Use NumPy convolve for vectorized moving average
-    # This is ~10x faster than Python loops
+    # 使用 NumPy convolve 实现向量化移动平均
+    # 性能比 Python 循环快约 10 倍
     weights = np.ones(period) / period
     sma = np.convolve(prices, weights, mode='valid')
 
-    # Prepend NaN for first (period-1) values
+    # 为前 (period-1) 个值填充 NaN
     result = np.concatenate([np.full(period - 1, np.nan), sma])
     return result
 
 
 def calculate_ema(bars: List[Dict], period: int, field: str = 'close') -> np.ndarray:
     """
-    Calculate Exponential Moving Average (EMA).
+    计算指数移动平均线 (EMA)。
 
-    Formula:
+    公式:
         multiplier = 2 / (period + 1)
         EMA[i] = price[i] * multiplier + EMA[i-1] * (1 - multiplier)
 
     Args:
-        bars: List of OHLCV bars
-        period: Number of periods for EMA
-        field: Price field to use (default: 'close')
+        bars: OHLCV K 线数据列表
+        period: EMA 周期数
+        field: 使用的价格字段（默认: 'close'）
 
     Returns:
-        Array of EMA values (first value is SMA, rest are exponential)
+        EMA 值数组（首个值为 SMA，其余为指数加权）
 
     Example:
         >>> ema = calculate_ema(bars, period=12)
@@ -137,23 +137,23 @@ def calculate_ema(bars: List[Dict], period: int, field: str = 'close') -> np.nda
     multiplier = 2.0 / (period + 1)
     ema = np.full(len(prices), np.nan)
 
-    # Find first valid window of 'period' non-NaN values
+    # 查找第一个包含 'period' 个非 NaN 值的有效窗口
     first_valid = None
     for i in range(period - 1, len(prices)):
         window = prices[i - period + 1:i + 1]
         if not np.any(np.isnan(window)):
-            # Initialize with SMA of first valid window
+            # 使用第一个有效窗口的 SMA 初始化
             ema[i] = np.mean(window)
             first_valid = i
             break
 
     if first_valid is None:
-        return ema  # All NaN if no valid window found
+        return ema  # 如果没有找到有效窗口，返回全 NaN
 
-    # Calculate EMA from first valid point forward
+    # 从第一个有效点开始向前计算 EMA
     for i in range(first_valid + 1, len(prices)):
         if np.isnan(prices[i]):
-            ema[i] = ema[i - 1]  # Propagate previous EMA on NaN
+            ema[i] = ema[i - 1]  # 遇到 NaN 时传播前一个 EMA 值
         else:
             ema[i] = prices[i] * multiplier + ema[i - 1] * (1 - multiplier)
 
@@ -162,18 +162,18 @@ def calculate_ema(bars: List[Dict], period: int, field: str = 'close') -> np.nda
 
 def calculate_wma(bars: List[Dict], period: int, field: str = 'close') -> np.ndarray:
     """
-    Calculate Weighted Moving Average (WMA).
+    计算加权移动平均线 (WMA)。
 
-    Formula: WMA = sum(price[i] * weight[i]) / sum(weight[i])
-    where weight[i] = i + 1 (linear weighting, recent prices weighted more)
+    公式: WMA = sum(price[i] * weight[i]) / sum(weight[i])
+    其中 weight[i] = i + 1（线性加权，近期价格权重更高）
 
     Args:
-        bars: List of OHLCV bars
-        period: Number of periods
-        field: Price field to use
+        bars: OHLCV K 线数据列表
+        period: 周期数
+        field: 使用的价格字段
 
     Returns:
-        Array of WMA values
+        WMA 值数组
     """
     if not _validate_period(bars, period, "WMA"):
         return np.full(len(bars), np.nan)
@@ -182,13 +182,13 @@ def calculate_wma(bars: List[Dict], period: int, field: str = 'close') -> np.nda
     if len(prices) == 0:
         return np.array([])
 
-    # Create linear weights (1, 2, 3, ..., period)
+    # 创建线性权重 (1, 2, 3, ..., period)
     weights = np.arange(1, period + 1)
     weight_sum = weights.sum()
 
     wma = np.full(len(prices), np.nan)
 
-    # Calculate WMA for each valid window
+    # 为每个有效窗口计算 WMA
     for i in range(period - 1, len(prices)):
         window = prices[i - period + 1:i + 1]
         wma[i] = np.dot(window, weights) / weight_sum
@@ -196,34 +196,34 @@ def calculate_wma(bars: List[Dict], period: int, field: str = 'close') -> np.nda
     return wma
 
 
-# ==================== MOMENTUM INDICATORS ====================
+# ==================== 动量指标 ====================
 
 def calculate_rsi(bars: List[Dict], period: int = 14, field: str = 'close') -> np.ndarray:
     """
-    Calculate Relative Strength Index (RSI) using Wilder's smoothing method.
+    使用 Wilder 平滑方法计算相对强弱指数 (RSI)。
 
-    Formula:
-        RS = Average Gain / Average Loss
+    公式:
+        RS = 平均涨幅 / 平均跌幅
         RSI = 100 - (100 / (1 + RS))
 
     Args:
-        bars: List of OHLCV bars
-        period: Number of periods (default: 14)
-        field: Price field to use
+        bars: OHLCV K 线数据列表
+        period: 周期数（默认: 14）
+        field: 使用的价格字段
 
     Returns:
-        Array of RSI values in range [0, 100]
-        First (period) values are NaN
+        RSI 值数组，范围 [0, 100]
+        前 (period) 个值为 NaN
 
-    Edge Cases:
-        - Constant price: Returns 50.0 (neutral)
-        - Only gains: Returns 100.0
-        - Only losses: Returns 0.0
+    边界情况:
+        - 价格恒定: 返回 50.0（中性）
+        - 仅上涨: 返回 100.0
+        - 仅下跌: 返回 0.0
 
     Example:
         >>> rsi = calculate_rsi(bars, period=14)
-        >>> # RSI > 70 indicates overbought
-        >>> # RSI < 30 indicates oversold
+        >>> # RSI > 70 表示超买
+        >>> # RSI < 30 表示超卖
     """
     if not _validate_period(bars, period + 1, "RSI"):
         return np.full(len(bars), np.nan)
@@ -232,29 +232,29 @@ def calculate_rsi(bars: List[Dict], period: int = 14, field: str = 'close') -> n
     if len(prices) == 0:
         return np.array([])
 
-    # Calculate price changes
+    # 计算价格变化
     deltas = np.diff(prices)
 
-    # Separate gains and losses
+    # 分离涨幅和跌幅
     gains = np.where(deltas > 0, deltas, 0)
     losses = np.where(deltas < 0, -deltas, 0)
 
-    # Calculate initial average gain/loss (simple average)
+    # 计算初始平均涨幅/跌幅（简单平均）
     avg_gain = np.mean(gains[:period])
     avg_loss = np.mean(losses[:period])
 
-    # Calculate RSI using Wilder's smoothing
+    # 使用 Wilder 平滑计算 RSI
     rsi = np.full(len(prices), np.nan)
 
     for i in range(period, len(prices) - 1):
-        # Wilder's smoothing: (previous_avg * (period-1) + current_value) / period
+        # Wilder 平滑: (previous_avg * (period-1) + current_value) / period
         avg_gain = (avg_gain * (period - 1) + gains[i]) / period
         avg_loss = (avg_loss * (period - 1) + losses[i]) / period
 
         if avg_loss == 0 and avg_gain == 0:
-            rsi[i + 1] = 50.0  # Constant price, neutral RSI
+            rsi[i + 1] = 50.0  # 价格恒定，中性 RSI
         elif avg_loss == 0:
-            rsi[i + 1] = 100.0  # Only gains, maximum RSI
+            rsi[i + 1] = 100.0  # 仅上涨，最大 RSI
         else:
             rs = avg_gain / avg_loss
             rsi[i + 1] = 100.0 - (100.0 / (1.0 + rs))
@@ -270,36 +270,36 @@ def calculate_macd(
     field: str = 'close'
 ) -> Dict[str, np.ndarray]:
     """
-    Calculate MACD (Moving Average Convergence Divergence).
+    计算 MACD（移动平均收敛发散指标）。
 
-    Formula:
-        MACD Line = EMA(fast) - EMA(slow)
-        Signal Line = EMA(MACD Line, signal)
-        Histogram = MACD Line - Signal Line
+    公式:
+        MACD 线 = EMA(fast) - EMA(slow)
+        信号线 = EMA(MACD 线, signal)
+        柱状图 = MACD 线 - 信号线
 
     Args:
-        bars: List of OHLCV bars
-        fast: Fast EMA period (default: 12)
-        slow: Slow EMA period (default: 26)
-        signal: Signal line EMA period (default: 9)
-        field: Price field to use
+        bars: OHLCV K 线数据列表
+        fast: 快速 EMA 周期（默认: 12）
+        slow: 慢速 EMA 周期（默认: 26）
+        signal: 信号线 EMA 周期（默认: 9）
+        field: 使用的价格字段
 
     Returns:
-        Dict with keys:
-            - 'macd_line': MACD values
-            - 'signal_line': Signal line values
-            - 'histogram': MACD - Signal (crossover indicator)
+        包含以下键的字典:
+            - 'macd_line': MACD 值
+            - 'signal_line': 信号线值
+            - 'histogram': MACD - 信号线（交叉指标）
 
-    Signals:
-        - Histogram > 0: Bullish (MACD above signal)
-        - Histogram < 0: Bearish (MACD below signal)
-        - Histogram crosses above 0: Buy signal
-        - Histogram crosses below 0: Sell signal
+    信号:
+        - 柱状图 > 0: 看涨（MACD 在信号线上方）
+        - 柱状图 < 0: 看跌（MACD 在信号线下方）
+        - 柱状图向上穿越 0: 买入信号
+        - 柱状图向下穿越 0: 卖出信号
 
     Example:
         >>> macd_data = calculate_macd(bars)
         >>> if macd_data['histogram'][-1] > 0 and macd_data['histogram'][-2] <= 0:
-        ...     print("Bullish crossover!")
+        ...     print("看涨交叉!")
     """
     if not _validate_period(bars, slow + signal, "MACD"):
         n = len(bars)
@@ -309,19 +309,19 @@ def calculate_macd(
             'histogram': np.full(n, np.nan)
         }
 
-    # Calculate fast and slow EMAs
+    # 计算快速和慢速 EMA
     ema_fast = calculate_ema(bars, fast, field)
     ema_slow = calculate_ema(bars, slow, field)
 
-    # MACD line = fast EMA - slow EMA
+    # MACD 线 = 快速 EMA - 慢速 EMA
     macd_line = ema_fast - ema_slow
 
-    # Signal line = EMA of MACD line
-    # Convert MACD line to bars format for EMA calculation
+    # 信号线 = MACD 线的 EMA
+    # 将 MACD 线转换为 bars 格式以计算 EMA
     macd_bars = [{'close': val} for val in macd_line]
     signal_line = calculate_ema(macd_bars, signal, 'close')
 
-    # Histogram = MACD - Signal
+    # 柱状图 = MACD - 信号线
     histogram = macd_line - signal_line
 
     return {
@@ -337,27 +337,27 @@ def calculate_stochastic(
     d_period: int = 3
 ) -> Dict[str, np.ndarray]:
     """
-    Calculate Stochastic Oscillator.
+    计算 Stochastic 震荡指标。
 
-    Formula:
-        %K = 100 * (Close - Lowest Low) / (Highest High - Lowest Low)
+    公式:
+        %K = 100 * (收盘价 - 最低价) / (最高价 - 最低价)
         %D = SMA(%K, d_period)
 
     Args:
-        bars: List of OHLCV bars
-        k_period: Lookback period for %K (default: 14)
-        d_period: SMA period for %D (default: 3)
+        bars: OHLCV K 线数据列表
+        k_period: %K 的回溯周期（默认: 14）
+        d_period: %D 的 SMA 周期（默认: 3）
 
     Returns:
-        Dict with keys:
-            - 'k': %K values (fast stochastic)
-            - 'd': %D values (slow stochastic, smoothed)
+        包含以下键的字典:
+            - 'k_line': %K 值（快速随机指标）
+            - 'd_line': %D 值（慢速随机指标，平滑后）
 
-    Signals:
-        - %K > 80: Overbought
-        - %K < 20: Oversold
-        - %K crosses above %D: Buy signal
-        - %K crosses below %D: Sell signal
+    信号:
+        - %K > 80: 超买
+        - %K < 20: 超卖
+        - %K 向上穿越 %D: 买入信号
+        - %K 向下穿越 %D: 卖出信号
     """
     if not _validate_period(bars, k_period, "Stochastic"):
         n = len(bars)
@@ -369,24 +369,24 @@ def calculate_stochastic(
 
     k = np.full(len(bars), np.nan)
 
-    # Calculate %K for each period
+    # 为每个周期计算 %K
     for i in range(k_period - 1, len(bars)):
         window_high = np.max(highs[i - k_period + 1:i + 1])
         window_low = np.min(lows[i - k_period + 1:i + 1])
 
         if window_high == window_low:
-            k[i] = 50.0  # Neutral when no range
+            k[i] = 50.0  # 无波动范围时为中性
         else:
             k[i] = 100.0 * (closes[i] - window_low) / (window_high - window_low)
 
-    # Calculate %D (SMA of %K)
+    # 计算 %D（%K 的 SMA）
     k_bars = [{'close': val} for val in k]
     d = calculate_sma(k_bars, d_period, 'close')
 
     return {'k_line': k, 'd_line': d}
 
 
-# ==================== VOLATILITY INDICATORS ====================
+# ==================== 波动率指标 ====================
 
 def calculate_bollinger_bands(
     bars: List[Dict],
@@ -395,37 +395,37 @@ def calculate_bollinger_bands(
     field: str = 'close'
 ) -> Dict[str, np.ndarray]:
     """
-    Calculate Bollinger Bands.
+    计算 Bollinger Bands（布林带）。
 
-    Formula:
-        Middle Band = SMA(period)
-        Upper Band = Middle Band + (std_dev * standard deviation)
-        Lower Band = Middle Band - (std_dev * standard deviation)
-        Bandwidth = (Upper - Lower) / Middle
+    公式:
+        中轨 = SMA(period)
+        上轨 = 中轨 + (std_dev * 标准差)
+        下轨 = 中轨 - (std_dev * 标准差)
+        带宽 = (上轨 - 下轨) / 中轨
 
     Args:
-        bars: List of OHLCV bars
-        period: Period for SMA and std dev (default: 20)
-        std_dev: Number of standard deviations (default: 2.0)
-        field: Price field to use
+        bars: OHLCV K 线数据列表
+        period: SMA 和标准差的周期（默认: 20）
+        std_dev: 标准差倍数（默认: 2.0）
+        field: 使用的价格字段
 
     Returns:
-        Dict with keys:
-            - 'upper_band': Upper Bollinger Band
-            - 'middle_band': SMA (middle line)
-            - 'lower_band': Lower Bollinger Band
-            - 'bandwidth': (upper - lower) / middle (volatility metric)
+        包含以下键的字典:
+            - 'upper_band': Bollinger 上轨
+            - 'middle_band': SMA（中轨）
+            - 'lower_band': Bollinger 下轨
+            - 'bandwidth': (上轨 - 下轨) / 中轨（波动率指标）
 
-    Signals:
-        - Price at upper band: Potential resistance, consider selling
-        - Price at lower band: Potential support, consider buying
-        - Bandwidth squeeze: Low volatility, breakout likely
-        - Bandwidth expansion: High volatility, trend continuation
+    信号:
+        - 价格在上轨: 潜在阻力位，考虑卖出
+        - 价格在下轨: 潜在支撑位，考虑买入
+        - 带宽收缩: 低波动率，可能突破
+        - 带宽扩张: 高波动率，趋势延续
 
     Example:
         >>> bb = calculate_bollinger_bands(bars, period=20, std_dev=2)
         >>> if bars[-1]['close'] <= bb['lower_band'][-1]:
-        ...     print("Price at lower band - potential buy")
+        ...     print("价格触及下轨 - 潜在买入机会")
     """
     if not _validate_period(bars, period, "Bollinger Bands"):
         n = len(bars)
@@ -439,17 +439,17 @@ def calculate_bollinger_bands(
     prices = _extract_prices(bars, field)
     middle_band = calculate_sma(bars, period, field)
 
-    # Calculate rolling standard deviation
+    # 计算滚动标准差
     std = np.full(len(bars), np.nan)
     for i in range(period - 1, len(bars)):
         window = prices[i - period + 1:i + 1]
-        std[i] = np.std(window, ddof=1)  # Sample std dev
+        std[i] = np.std(window, ddof=1)  # 样本标准差
 
-    # Calculate bands
+    # 计算上下轨
     upper_band = middle_band + (std_dev * std)
     lower_band = middle_band - (std_dev * std)
 
-    # Calculate bandwidth (volatility metric)
+    # 计算带宽（波动率指标）
     bandwidth = np.where(
         middle_band > 0,
         (upper_band - lower_band) / middle_band,
@@ -466,24 +466,24 @@ def calculate_bollinger_bands(
 
 def calculate_atr(bars: List[Dict], period: int = 14) -> np.ndarray:
     """
-    Calculate Average True Range (ATR) using Wilder's smoothing.
+    使用 Wilder 平滑方法计算平均真实波幅 (ATR)。
 
-    Formula:
-        True Range = max(high - low, abs(high - prev_close), abs(low - prev_close))
-        ATR = Wilder's smoothed average of True Range
+    公式:
+        真实波幅 = max(最高价 - 最低价, abs(最高价 - 前收盘价), abs(最低价 - 前收盘价))
+        ATR = 真实波幅的 Wilder 平滑平均
 
     Args:
-        bars: List of OHLCV bars
-        period: ATR period (default: 14)
+        bars: OHLCV K 线数据列表
+        period: ATR 周期（默认: 14）
 
     Returns:
-        Array of ATR values in dollars
+        ATR 值数组（单位为美元）
 
-    Usage:
-        ATR represents average price movement and is used for:
-        - Stop loss placement (e.g., stop at entry - 2*ATR)
-        - Position sizing (risk per unit = ATR)
-        - Volatility assessment
+    用途:
+        ATR 代表平均价格波动，用于:
+        - 止损位设置（例如，止损位 = 入场价 - 2*ATR）
+        - 仓位规模计算（每单位风险 = ATR）
+        - 波动率评估
 
     Example:
         >>> atr = calculate_atr(bars, period=14)
@@ -496,9 +496,9 @@ def calculate_atr(bars: List[Dict], period: int = 14) -> np.ndarray:
     lows = _extract_prices(bars, 'low')
     closes = _extract_prices(bars, 'close')
 
-    # Calculate True Range
+    # 计算真实波幅
     tr = np.full(len(bars), np.nan)
-    tr[0] = highs[0] - lows[0]  # First bar uses simple range
+    tr[0] = highs[0] - lows[0]  # 首根 K 线使用简单波幅
 
     for i in range(1, len(bars)):
         hl = highs[i] - lows[i]
@@ -506,12 +506,12 @@ def calculate_atr(bars: List[Dict], period: int = 14) -> np.ndarray:
         lc = abs(lows[i] - closes[i - 1])
         tr[i] = max(hl, hc, lc)
 
-    # Calculate ATR using Wilder's smoothing
+    # 使用 Wilder 平滑计算 ATR
     atr = np.full(len(bars), np.nan)
-    atr[period] = np.mean(tr[1:period + 1])  # Initial ATR is simple average
+    atr[period] = np.mean(tr[1:period + 1])  # 初始 ATR 为简单平均
 
     for i in range(period + 1, len(bars)):
-        # Wilder's smoothing: (previous_atr * (period-1) + current_tr) / period
+        # Wilder 平滑: (previous_atr * (period-1) + current_tr) / period
         atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period
 
     return atr
@@ -523,28 +523,28 @@ def calculate_historical_volatility(
     field: str = 'close'
 ) -> float:
     """
-    Calculate annualized historical volatility.
+    计算年化历史波动率。
 
-    Formula:
-        Daily Return = ln(price[i] / price[i-1])
-        Volatility = std(returns) * sqrt(252)
+    公式:
+        日收益率 = ln(price[i] / price[i-1])
+        波动率 = std(returns) * sqrt(252)
 
     Args:
-        bars: List of OHLCV bars
-        period: Lookback period (default: 20 days)
-        field: Price field to use
+        bars: OHLCV K 线数据列表
+        period: 回溯周期（默认: 20 天）
+        field: 使用的价格字段
 
     Returns:
-        Annualized volatility as decimal (e.g., 0.25 = 25%)
+        年化波动率（小数形式，例如 0.25 = 25%）
 
-    Usage:
-        Compare to implied volatility (IV) to identify mispricing:
-        - HV > IV: Volatility underpriced, favor buying options
-        - HV < IV: Volatility overpriced, favor selling options
+    用途:
+        与隐含波动率 (IV) 对比以识别定价偏差:
+        - HV > IV: 波动率定价偏低，倾向买入期权
+        - HV < IV: 波动率定价偏高，倾向卖出期权
 
     Example:
         >>> hv = calculate_historical_volatility(bars, period=20)
-        >>> print(f"20-day HV: {hv:.1%}")  # e.g., "20-day HV: 24.5%"
+        >>> print(f"20 日历史波动率: {hv:.1%}")  # 例如 "20 日历史波动率: 24.5%"
     """
     if not _validate_period(bars, period + 1, "Historical Volatility"):
         return np.nan
@@ -553,48 +553,48 @@ def calculate_historical_volatility(
     if len(prices) < period + 1:
         return np.nan
 
-    # Use most recent 'period' bars
+    # 使用最近 'period' 根 K 线
     recent_prices = prices[-period - 1:]
 
-    # Calculate log returns
+    # 计算对数收益率
     returns = np.log(recent_prices[1:] / recent_prices[:-1])
 
-    # Calculate standard deviation
-    volatility = np.std(returns, ddof=1)  # Sample std dev
+    # 计算标准差
+    volatility = np.std(returns, ddof=1)  # 样本标准差
 
-    # Annualize (252 trading days per year)
+    # 年化（每年 252 个交易日）
     annualized_vol = volatility * np.sqrt(252)
 
     return annualized_vol
 
 
-# ==================== TREND INDICATORS ====================
+# ==================== 趋势指标 ====================
 
 def calculate_adx(bars: List[Dict], period: int = 14) -> np.ndarray:
     """
-    Calculate Average Directional Index (ADX).
+    计算平均趋向指数 (ADX)。
 
-    ADX measures trend strength (not direction) on scale 0-100:
-        - ADX < 20: Weak trend (ranging market)
-        - ADX 20-40: Moderate trend
-        - ADX > 40: Strong trend
+    ADX 衡量趋势强度（非方向），范围 0-100:
+        - ADX < 20: 弱趋势（震荡市场）
+        - ADX 20-40: 中等趋势
+        - ADX > 40: 强趋势
 
     Args:
-        bars: List of OHLCV bars
-        period: ADX period (default: 14)
+        bars: OHLCV K 线数据列表
+        period: ADX 周期（默认: 14）
 
     Returns:
-        Array of ADX values [0, 100]
+        ADX 值数组 [0, 100]
 
-    Usage:
-        Use ADX to determine if market is trending or ranging:
-        - High ADX: Use trend-following strategies
-        - Low ADX: Use mean-reversion strategies
+    用途:
+        使用 ADX 判断市场是趋势市还是震荡市:
+        - 高 ADX: 使用趋势跟踪策略
+        - 低 ADX: 使用均值回归策略
 
     Example:
         >>> adx = calculate_adx(bars, period=14)
         >>> if adx[-1] < 25:
-        ...     print("Weak trend - use mean reversion strategy")
+        ...     print("弱趋势 - 使用均值回归策略")
     """
     if not _validate_period(bars, period * 2, "ADX"):
         return np.full(len(bars), np.nan)
@@ -603,7 +603,7 @@ def calculate_adx(bars: List[Dict], period: int = 14) -> np.ndarray:
     lows = _extract_prices(bars, 'low')
     closes = _extract_prices(bars, 'close')
 
-    # Calculate +DM and -DM (directional movement)
+    # 计算 +DM 和 -DM（方向性运动）
     plus_dm = np.full(len(bars), 0.0)
     minus_dm = np.full(len(bars), 0.0)
 
@@ -616,14 +616,14 @@ def calculate_adx(bars: List[Dict], period: int = 14) -> np.ndarray:
         if low_diff > high_diff and low_diff > 0:
             minus_dm[i] = low_diff
 
-    # Calculate ATR
+    # 计算 ATR
     atr = calculate_atr(bars, period)
 
-    # Calculate +DI and -DI (directional indicators)
+    # 计算 +DI 和 -DI（方向性指标）
     plus_di = np.full(len(bars), np.nan)
     minus_di = np.full(len(bars), np.nan)
 
-    # Smooth DM values using Wilder's smoothing
+    # 使用 Wilder 平滑处理 DM 值
     smoothed_plus_dm = np.copy(plus_dm)
     smoothed_minus_dm = np.copy(minus_dm)
 
@@ -635,14 +635,14 @@ def calculate_adx(bars: List[Dict], period: int = 14) -> np.ndarray:
             plus_di[i] = 100 * smoothed_plus_dm[i] / atr[i]
             minus_di[i] = 100 * smoothed_minus_dm[i] / atr[i]
 
-    # Calculate DX (directional index)
+    # 计算 DX（方向性指数）
     dx = np.full(len(bars), np.nan)
     for i in range(period, len(bars)):
         di_sum = plus_di[i] + minus_di[i]
         if di_sum > 0:
             dx[i] = 100 * abs(plus_di[i] - minus_di[i]) / di_sum
 
-    # Calculate ADX (smoothed DX)
+    # 计算 ADX（平滑后的 DX）
     adx = np.full(len(bars), np.nan)
     adx[period * 2 - 1] = np.nanmean(dx[period:period * 2])
 
@@ -658,27 +658,27 @@ def detect_trend(
     sma_long: int = 50
 ) -> str:
     """
-    Detect trend direction and strength using moving average relationships.
+    使用移动平均线关系检测趋势方向和强度。
 
-    Classification:
-        - "STRONG_UPTREND": Price > SMA_short > SMA_long, both SMAs rising
-        - "WEAK_UPTREND": Price > SMA_short, but SMA_short ≈ SMA_long
-        - "STRONG_DOWNTREND": Price < SMA_short < SMA_long, both SMAs falling
-        - "WEAK_DOWNTREND": Price < SMA_short, but SMA_short ≈ SMA_long
-        - "SIDEWAYS": SMAs flat, no clear direction
+    分类:
+        - "STRONG_UPTREND": 价格 > SMA_短期 > SMA_长期，且两条均线均上升
+        - "WEAK_UPTREND": 价格 > SMA_短期，但 SMA_短期 ≈ SMA_长期
+        - "STRONG_DOWNTREND": 价格 < SMA_短期 < SMA_长期，且两条均线均下降
+        - "WEAK_DOWNTREND": 价格 < SMA_短期，但 SMA_短期 ≈ SMA_长期
+        - "SIDEWAYS": 均线平坦，无明确方向
 
     Args:
-        bars: List of OHLCV bars
-        sma_short: Short SMA period (default: 20)
-        sma_long: Long SMA period (default: 50)
+        bars: OHLCV K 线数据列表
+        sma_short: 短期 SMA 周期（默认: 20）
+        sma_long: 长期 SMA 周期（默认: 50）
 
     Returns:
-        Trend classification string
+        趋势分类字符串
 
     Example:
         >>> trend = detect_trend(bars, sma_short=20, sma_long=50)
         >>> if trend == "STRONG_UPTREND":
-        ...     # Use trend-following long strategies
+        ...     # 使用趋势跟踪做多策略
     """
     if len(bars) < sma_long + 10:
         return "UNKNOWN"
@@ -694,19 +694,19 @@ def detect_trend(
     if np.isnan(current_sma_s) or np.isnan(current_sma_l):
         return "UNKNOWN"
 
-    # Calculate SMA slopes (last 10 days)
+    # 计算 SMA 斜率（最近 10 天）
     sma_s_slope = (sma_s[-1] - sma_s[-10]) / sma_s[-10]
     sma_l_slope = (sma_l[-1] - sma_l[-10]) / sma_l[-10]
 
-    # Check alignment
+    # 检查排列
     if current_price > current_sma_s > current_sma_l:
-        if sma_s_slope > 0.005:  # >0.5% rise over 10 days
+        if sma_s_slope > 0.005:  # 10 天内涨幅 > 0.5%
             return "STRONG_UPTREND"
         else:
             return "WEAK_UPTREND"
 
     elif current_price < current_sma_s < current_sma_l:
-        if sma_s_slope < -0.005:  # >0.5% decline over 10 days
+        if sma_s_slope < -0.005:  # 10 天内跌幅 > 0.5%
             return "STRONG_DOWNTREND"
         else:
             return "WEAK_DOWNTREND"
@@ -720,27 +720,27 @@ def detect_trend(
         return "WEAK_DOWNTREND"
 
 
-# ==================== SUPPORT/RESISTANCE ====================
+# ==================== 支撑/阻力位 ====================
 
 def find_swing_highs(bars: List[Dict], window: int = 5) -> List[float]:
     """
-    Find swing highs (local maxima) for resistance levels.
+    查找摆动高点（局部最大值）作为阻力位。
 
-    A swing high is a price that is higher than all prices within
-    ±window bars on either side.
+    摆动高点是在其前后 ±window 根 K 线范围内
+    高于所有价格的点位。
 
     Args:
-        bars: List of OHLCV bars
-        window: Lookback/lookahead window (default: 5)
+        bars: OHLCV K 线数据列表
+        window: 回溯/前瞻窗口（默认: 5）
 
     Returns:
-        List of swing high prices, sorted in descending order
+        摆动高点价格列表，按降序排列
 
-    Usage:
-        Use swing highs as resistance levels for:
-        - Take profit targets
-        - Short entry levels
-        - Strike selection (sell strikes at resistance)
+    用途:
+        将摆动高点用作阻力位，用于:
+        - 止盈目标
+        - 做空入场位
+        - 行权价选择（在阻力位卖出行权价）
 
     Example:
         >>> resistance_levels = find_swing_highs(bars, window=5)
@@ -752,11 +752,11 @@ def find_swing_highs(bars: List[Dict], window: int = 5) -> List[float]:
     highs = _extract_prices(bars, 'high')
     swing_highs = []
 
-    # Check each potential swing high
+    # 检查每个潜在的摆动高点
     for i in range(window, len(highs) - window):
         is_swing_high = True
 
-        # Check if current high is greater than all surrounding highs
+        # 检查当前高点是否高于所有周围高点
         for j in range(i - window, i + window + 1):
             if j != i and highs[j] >= highs[i]:
                 is_swing_high = False
@@ -765,29 +765,29 @@ def find_swing_highs(bars: List[Dict], window: int = 5) -> List[float]:
         if is_swing_high:
             swing_highs.append(highs[i])
 
-    # Sort in descending order (highest resistance first)
+    # 按降序排列（最高阻力位优先）
     return sorted(swing_highs, reverse=True)
 
 
 def find_swing_lows(bars: List[Dict], window: int = 5) -> List[float]:
     """
-    Find swing lows (local minima) for support levels.
+    查找摆动低点（局部最小值）作为支撑位。
 
-    A swing low is a price that is lower than all prices within
-    ±window bars on either side.
+    摆动低点是在其前后 ±window 根 K 线范围内
+    低于所有价格的点位。
 
     Args:
-        bars: List of OHLCV bars
-        window: Lookback/lookahead window (default: 5)
+        bars: OHLCV K 线数据列表
+        window: 回溯/前瞻窗口（默认: 5）
 
     Returns:
-        List of swing low prices, sorted in ascending order
+        摆动低点价格列表，按升序排列
 
-    Usage:
-        Use swing lows as support levels for:
-        - Stop loss placement
-        - Long entry levels
-        - Strike selection (buy strikes at support)
+    用途:
+        将摆动低点用作支撑位，用于:
+        - 止损位设置
+        - 做多入场位
+        - 行权价选择（在支撑位买入行权价）
 
     Example:
         >>> support_levels = find_swing_lows(bars, window=5)
@@ -799,11 +799,11 @@ def find_swing_lows(bars: List[Dict], window: int = 5) -> List[float]:
     lows = _extract_prices(bars, 'low')
     swing_lows = []
 
-    # Check each potential swing low
+    # 检查每个潜在的摆动低点
     for i in range(window, len(lows) - window):
         is_swing_low = True
 
-        # Check if current low is less than all surrounding lows
+        # 检查当前低点是否低于所有周围低点
         for j in range(i - window, i + window + 1):
             if j != i and lows[j] <= lows[i]:
                 is_swing_low = False
@@ -812,42 +812,42 @@ def find_swing_lows(bars: List[Dict], window: int = 5) -> List[float]:
         if is_swing_low:
             swing_lows.append(lows[i])
 
-    # Sort in ascending order (lowest support first)
+    # 按升序排列（最低支撑位优先）
     return sorted(swing_lows)
 
 
 def calculate_pivot_points(bars) -> Dict[str, float]:
     """
-    Calculate pivot points and support/resistance levels.
+    计算枢轴点及支撑/阻力位。
 
-    Uses the most recent complete bar (e.g., yesterday's OHLC for today's pivots).
+    使用最近的完整 K 线（例如，今日枢轴点使用昨日 OHLC）。
 
-    Formula:
-        Pivot = (High + Low + Close) / 3
-        R1 = 2 * Pivot - Low
-        R2 = Pivot + (High - Low)
-        S1 = 2 * Pivot - High
-        S2 = Pivot - (High - Low)
+    公式:
+        枢轴点 = (最高价 + 最低价 + 收盘价) / 3
+        R1 = 2 * 枢轴点 - 最低价
+        R2 = 枢轴点 + (最高价 - 最低价)
+        S1 = 2 * 枢轴点 - 最高价
+        S2 = 枢轴点 - (最高价 - 最低价)
 
     Args:
-        bars: Either a single OHLCV bar dict or a list of bars (uses last bar)
+        bars: 单个 OHLCV K 线字典或 K 线列表（使用最后一根）
 
     Returns:
-        Dict with pivot point and support/resistance levels
+        包含枢轴点和支撑/阻力位的字典
 
-    Usage:
-        Pivot points are intraday support/resistance levels used for:
-        - Day trading entry/exit levels
-        - Stop loss placement
-        - Target price selection
+    用途:
+        枢轴点是日内支撑/阻力位，用于:
+        - 日内交易入场/出场位
+        - 止损位设置
+        - 目标价选择
 
     Example:
-        >>> pivots = calculate_pivot_points(bars[-1])  # Single bar
-        >>> pivots = calculate_pivot_points(bars)  # List of bars
+        >>> pivots = calculate_pivot_points(bars[-1])  # 单根 K 线
+        >>> pivots = calculate_pivot_points(bars)  # K 线列表
         >>> if price < pivots['pivot']:
-        ...     target = pivots['s1']  # Bearish, target S1
+        ...     target = pivots['s1']  # 看跌，目标 S1
     """
-    # Handle both single bar and list of bars
+    # 处理单根 K 线和 K 线列表两种情况
     if isinstance(bars, dict):
         bar = bars
     elif isinstance(bars, list):
@@ -887,33 +887,33 @@ def calculate_pivot_points(bars) -> Dict[str, float]:
     }
 
 
-# ==================== VOLUME INDICATORS ====================
+# ==================== 成交量指标 ====================
 
 def calculate_obv(bars: List[Dict]) -> np.ndarray:
     """
-    Calculate On-Balance Volume (OBV).
+    计算能量潮指标 (OBV)。
 
-    Formula:
-        If close > prev_close: OBV = OBV_prev + volume
-        If close < prev_close: OBV = OBV_prev - volume
-        If close == prev_close: OBV = OBV_prev
+    公式:
+        如果 收盘价 > 前收盘价: OBV = OBV_前值 + 成交量
+        如果 收盘价 < 前收盘价: OBV = OBV_前值 - 成交量
+        如果 收盘价 == 前收盘价: OBV = OBV_前值
 
     Args:
-        bars: List of OHLCV bars
+        bars: OHLCV K 线数据列表
 
     Returns:
-        Array of OBV values
+        OBV 值数组
 
-    Usage:
-        OBV confirms price trends with volume:
-        - Rising OBV + rising price: Strong uptrend (volume confirms)
-        - Falling OBV + rising price: Weak uptrend (divergence, warning)
-        - Rising OBV + falling price: Accumulation, potential reversal
+    用途:
+        OBV 通过成交量确认价格趋势:
+        - OBV 上升 + 价格上升: 强势上涨（成交量确认）
+        - OBV 下降 + 价格上升: 弱势上涨（背离，警告）
+        - OBV 上升 + 价格下降: 积累阶段，可能反转
 
     Example:
         >>> obv = calculate_obv(bars)
-        >>> if obv[-1] > obv[-20]:  # OBV rising over 20 days
-        ...     print("Volume confirms uptrend")
+        >>> if obv[-1] > obv[-20]:  # OBV 在 20 天内上升
+        ...     print("成交量确认上升趋势")
     """
     if len(bars) < 2:
         return np.array([0.0])
@@ -937,28 +937,28 @@ def calculate_obv(bars: List[Dict]) -> np.ndarray:
 
 def calculate_vwap(bars: List[Dict]) -> np.ndarray:
     """
-    Calculate Volume-Weighted Average Price (VWAP).
+    计算成交量加权平均价 (VWAP)。
 
-    Formula:
-        VWAP = sum(typical_price * volume) / sum(volume)
-        where typical_price = (high + low + close) / 3
+    公式:
+        VWAP = sum(典型价格 * 成交量) / sum(成交量)
+        其中 典型价格 = (最高价 + 最低价 + 收盘价) / 3
 
     Args:
-        bars: List of OHLCV bars
+        bars: OHLCV K 线数据列表
 
     Returns:
-        Array of VWAP values (cumulative from start)
+        VWAP 值数组（从起点开始累计）
 
-    Usage:
-        VWAP represents average price weighted by volume:
-        - Price > VWAP: Bullish (institutional buying)
-        - Price < VWAP: Bearish (institutional selling)
-        - Used as dynamic support/resistance
+    用途:
+        VWAP 代表按成交量加权的平均价格:
+        - 价格 > VWAP: 看涨（机构买入）
+        - 价格 < VWAP: 看跌（机构卖出）
+        - 用作动态支撑/阻力位
 
     Example:
         >>> vwap = calculate_vwap(bars)
         >>> if current_price > vwap[-1]:
-        ...     print("Trading above VWAP - bullish")
+        ...     print("价格高于 VWAP - 看涨")
     """
     if len(bars) < 1:
         return np.array([])
@@ -968,10 +968,10 @@ def calculate_vwap(bars: List[Dict]) -> np.ndarray:
     closes = _extract_prices(bars, 'close')
     volumes = _extract_prices(bars, 'volume')
 
-    # Calculate typical price
+    # 计算典型价格
     typical_price = (highs + lows + closes) / 3.0
 
-    # Calculate cumulative VWAP
+    # 计算累计 VWAP
     vwap = np.zeros(len(bars))
     cumulative_pv = 0.0
     cumulative_volume = 0.0
@@ -988,34 +988,34 @@ def calculate_vwap(bars: List[Dict]) -> np.ndarray:
     return vwap
 
 
-# ==================== EXPORT ALL FUNCTIONS ====================
+# ==================== 导出所有函数 ====================
 
 __all__ = [
-    # Moving Averages
+    # 移动平均线
     'calculate_sma',
     'calculate_ema',
     'calculate_wma',
 
-    # Momentum Indicators
+    # 动量指标
     'calculate_rsi',
     'calculate_macd',
     'calculate_stochastic',
 
-    # Volatility Indicators
+    # 波动率指标
     'calculate_bollinger_bands',
     'calculate_atr',
     'calculate_historical_volatility',
 
-    # Trend Indicators
+    # 趋势指标
     'calculate_adx',
     'detect_trend',
 
-    # Support/Resistance
+    # 支撑/阻力位
     'find_swing_highs',
     'find_swing_lows',
     'calculate_pivot_points',
 
-    # Volume Indicators
+    # 成交量指标
     'calculate_obv',
     'calculate_vwap',
 ]

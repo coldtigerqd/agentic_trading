@@ -1,9 +1,8 @@
 """
-MCP Bridge - Helper functions for Claude Code to integrate MCP tools with skills.
+MCP 桥接 - 帮助 Claude Code 将 MCP 工具与 skills 集成的辅助函数。
 
-IMPORTANT: These functions are designed to be called BY Claude Code during
-the Commander workflow. They bridge the gap between Python skills library
-and MCP tools that are only accessible to Claude Code.
+重要：这些函数设计为在 Commander 工作流期间由 Claude Code 调用。
+它们在 Python skills 库和仅 Claude Code 可访问的 MCP 工具之间架起桥梁。
 """
 
 from typing import Dict, List, Any, Optional
@@ -21,39 +20,38 @@ def execute_order_with_ibkr(
     metadata: Optional[Dict] = None
 ) -> OrderResult:
     """
-    Execute a validated order via IBKR MCP.
+    通过 IBKR MCP 执行已验证的订单。
 
-    This function should be called by Claude Code AFTER place_order_with_guard()
-    has validated the order.
+    此函数应在 place_order_with_guard() 验证订单后由 Claude Code 调用。
 
-    Workflow:
-        1. Python: place_order_with_guard() validates and logs order
-        2. Claude: Calls this function to execute via IBKR MCP
-        3. Python: Updates trade status in database
+    工作流：
+        1. Python：place_order_with_guard() 验证并记录订单
+        2. Claude：调用此函数通过 IBKR MCP 执行
+        3. Python：更新数据库中的交易状态
 
     Args:
-        validated_order: Result from place_order_with_guard()
-        legs: Order legs in IBKR format
-        symbol: Underlying symbol
-        strategy: Strategy name
-        max_risk: Maximum risk ($)
-        capital_required: Capital required ($)
-        metadata: Additional metadata
+        validated_order: 来自 place_order_with_guard() 的结果
+        legs: IBKR 格式的订单 leg
+        symbol: 标的代码
+        strategy: 策略名称
+        max_risk: 最大风险（美元）
+        capital_required: 所需资金（美元）
+        metadata: 额外元数据
 
     Returns:
-        OrderResult with IBKR order_id if successful
+        如果成功，包含 IBKR order_id 的 OrderResult
 
     Example:
         ```python
-        # Step 1: Validate order
+        # 步骤 1：验证订单
         from skills import place_order_with_guard
         result = place_order_with_guard(...)
 
-        # Step 2: If validation passed, execute via IBKR
+        # 步骤 2：如果验证通过，通过 IBKR 执行
         if result.success:
             from skills.mcp_bridge import execute_order_with_ibkr
 
-            # Claude Code calls IBKR MCP tool
+            # Claude Code 调用 IBKR MCP 工具
             ibkr_result = mcp__ibkr__place_order(
                 symbol=symbol,
                 strategy=strategy,
@@ -63,7 +61,7 @@ def execute_order_with_ibkr(
                 metadata=metadata
             )
 
-            # Update trade status with IBKR order ID
+            # 用 IBKR 订单 ID 更新交易状态
             final_result = execute_order_with_ibkr(
                 validated_order=result,
                 legs=legs,
@@ -78,15 +76,15 @@ def execute_order_with_ibkr(
     if not validated_order.success:
         return validated_order
 
-    # Extract IBKR order ID from metadata
-    # Claude should have called mcp__ibkr__place_order() and passed result here
+    # 从元数据中提取 IBKR 订单 ID
+    # Claude 应该已经调用了 mcp__ibkr__place_order() 并在此处传递结果
     ibkr_order_id = None
     if metadata and "ibkr_result" in metadata:
         ibkr_result = metadata["ibkr_result"]
         ibkr_order_id = ibkr_result.get("order_id")
 
     if ibkr_order_id:
-        # Update trade status to SUBMITTED with IBKR order ID
+        # 用 IBKR 订单 ID 将交易状态更新为 SUBMITTED
         update_trade_status(
             trade_id=validated_order.trade_id,
             status="SUBMITTED",
@@ -97,10 +95,10 @@ def execute_order_with_ibkr(
             success=True,
             trade_id=validated_order.trade_id,
             order_id=ibkr_order_id,
-            message=f"Order submitted to IBKR successfully (order_id={ibkr_order_id})"
+            message=f"订单已成功提交至 IBKR（order_id={ibkr_order_id}）"
         )
     else:
-        # IBKR submission failed or no order ID returned
+        # IBKR 提交失败或未返回订单 ID
         update_trade_status(
             trade_id=validated_order.trade_id,
             status="FAILED"
@@ -109,37 +107,37 @@ def execute_order_with_ibkr(
         return OrderResult(
             success=False,
             trade_id=validated_order.trade_id,
-            error="Failed to submit order to IBKR",
-            message="IBKR MCP did not return order_id"
+            error="订单提交至 IBKR 失败 (IBKR_SUBMISSION_FAILED)",
+            message="IBKR MCP 未返回 order_id"
         )
 
 
 def fetch_market_data_for_symbols(symbols: List[str]) -> Dict[str, Any]:
     """
-    Fetch market data for given symbols via ThetaData MCP.
+    通过 ThetaData MCP 获取给定标的的市场数据。
 
-    This is a helper that Claude Code should use to build market_data
-    dictionaries for consult_swarm().
+    这是一个辅助函数，Claude Code 应使用它来构建
+    consult_swarm() 的 market_data 字典。
 
     Args:
-        symbols: List of stock symbols
+        symbols: 股票代码列表
 
     Returns:
-        Market data dictionary suitable for consult_swarm()
+        适合 consult_swarm() 的市场数据字典
 
     Example:
         ```python
-        # Claude Code fetches market data
+        # Claude Code 获取市场数据
         symbols = ["AAPL", "NVDA", "AMD", "TSLA"]
 
-        # Get stock quotes via ThetaData MCP
+        # 通过 ThetaData MCP 获取股票报价
         quotes = mcp__ThetaData__stock_snapshot_quote(symbol=symbols)
 
-        # Get options data for high IV symbols
+        # 为高 IV 标的获取期权数据
         options_data = {}
         for symbol in symbols:
             options = mcp__ThetaData__option_list_expirations(symbol=[symbol])
-            # Filter for 30-45 DTE expiration
+            # 筛选 30-45 DTE 到期日
             target_expiry = find_target_expiration(options, dte_range=(30, 45))
 
             options_chain = mcp__ThetaData__option_snapshot_quote(
@@ -148,12 +146,12 @@ def fetch_market_data_for_symbols(symbols: List[str]) -> Dict[str, Any]:
             )
             options_data[symbol] = options_chain
 
-        # Build market snapshot
+        # 构建市场快照
         market_data = fetch_market_data_for_symbols(symbols)
         market_data["quotes"] = quotes
         market_data["options_chains"] = options_data
 
-        # Now pass to swarm
+        # 现在传递给群体
         from skills import consult_swarm
         signals = consult_swarm(sector="TECH", market_data=market_data)
         ```
@@ -163,23 +161,23 @@ def fetch_market_data_for_symbols(symbols: List[str]) -> Dict[str, Any]:
     return {
         "timestamp": datetime.now().isoformat(),
         "symbols": symbols,
-        "quotes": {},  # Claude should fill from mcp__ThetaData__stock_snapshot_quote()
-        "options_chains": {},  # Claude should fill from mcp__ThetaData__option_snapshot_quote()
-        "account": {},  # Claude should fill from mcp__ibkr__get_account()
-        "positions": []  # Claude should fill from mcp__ibkr__get_positions()
+        "quotes": {},  # Claude 应从 mcp__ThetaData__stock_snapshot_quote() 填充
+        "options_chains": {},  # Claude 应从 mcp__ThetaData__option_snapshot_quote() 填充
+        "account": {},  # Claude 应从 mcp__ibkr__get_account() 填充
+        "positions": []  # Claude 应从 mcp__ibkr__get_positions() 填充
     }
 
 
 def find_target_expiration(expirations: List[str], dte_range: tuple = (30, 45)) -> Optional[str]:
     """
-    Find the best expiration date within target DTE range.
+    在目标 DTE 范围内找到最佳到期日。
 
     Args:
-        expirations: List of expiration dates in YYYYMMDD format
-        dte_range: Tuple of (min_dte, max_dte)
+        expirations: YYYYMMDD 格式的到期日列表
+        dte_range: (min_dte, max_dte) 元组
 
     Returns:
-        Expiration date string or None
+        到期日字符串或 None
     """
     from datetime import datetime, timedelta
 
@@ -200,27 +198,27 @@ def find_target_expiration(expirations: List[str], dte_range: tuple = (30, 45)) 
     if not target_expirations:
         return None
 
-    # Return the expiration closest to middle of range
+    # 返回最接近范围中点的到期日
     target_dte = (min_dte + max_dte) // 2
     best_exp = min(target_expirations, key=lambda x: abs(x[0] - target_dte))
     return best_exp[1]
 
 
-# === USAGE GUIDE FOR CLAUDE CODE ===
+# === CLAUDE CODE 使用指南 ===
 """
-When Claude Code acts as Commander, use this pattern:
+当 Claude Code 作为 Commander 时，使用此模式：
 
 ```python
-# === SENSE Phase ===
-# Get account and positions via IBKR MCP
+# === SENSE 阶段 ===
+# 通过 IBKR MCP 获取账户和持仓
 account = mcp__ibkr__get_account()
 positions = mcp__ibkr__get_positions()
 
-# Get market data via ThetaData MCP
+# 通过 ThetaData MCP 获取市场数据
 symbols = ["AAPL", "NVDA", "AMD", "TSLA"]
 quotes = mcp__ThetaData__stock_snapshot_quote(symbol=symbols)
 
-# Get options data
+# 获取期权数据
 from skills.mcp_bridge import find_target_expiration
 expirations = mcp__ThetaData__option_list_expirations(symbol=["NVDA"])
 target_exp = find_target_expiration(expirations["NVDA"], dte_range=(30, 45))
@@ -230,7 +228,7 @@ options = mcp__ThetaData__option_snapshot_quote(
     expiration=target_exp
 )
 
-# === THINK Phase ===
+# === THINK 阶段 ===
 from skills import consult_swarm
 
 market_data = {
@@ -244,7 +242,7 @@ market_data = {
 
 signals = consult_swarm(sector="TECH", market_data=market_data)
 
-# === DECIDE Phase ===
+# === DECIDE 阶段 ===
 from skills import kelly_criterion
 
 approved_trades = []
@@ -252,7 +250,7 @@ for signal in signals:
     if signal["signal"] == "NO_TRADE":
         continue
 
-    # Calculate position size
+    # 计算仓位大小
     position_size = kelly_criterion(
         win_prob=signal["confidence"],
         win_amount=500,
@@ -261,16 +259,16 @@ for signal in signals:
         fraction=0.25
     )
 
-    # Apply safety limits
+    # 应用安全限制
     if position_size <= 2000 and signal["params"]["max_risk"] <= 500:
         approved_trades.append(signal)
 
-# === ACT Phase ===
+# === ACT 阶段 ===
 from skills import place_order_with_guard
 from skills.mcp_bridge import execute_order_with_ibkr
 
 for trade in approved_trades:
-    # Step 1: Validate with safety layer
+    # 步骤 1：通过安全层验证
     result = place_order_with_guard(
         symbol=trade["target"],
         strategy=trade["signal"],
@@ -281,10 +279,10 @@ for trade in approved_trades:
     )
 
     if not result.success:
-        print(f"❌ Trade rejected: {result.error}")
+        print(f"❌ 交易被拒绝：{result.error}")
         continue
 
-    # Step 2: Submit to IBKR via MCP
+    # 步骤 2：通过 MCP 提交至 IBKR
     try:
         ibkr_result = mcp__ibkr__place_order(
             symbol=trade["target"],
@@ -294,7 +292,7 @@ for trade in approved_trades:
             capital_required=trade["params"]["capital_required"]
         )
 
-        # Step 3: Update trade status
+        # 步骤 3：更新交易状态
         final_result = execute_order_with_ibkr(
             validated_order=result,
             legs=trade["params"]["legs"],
@@ -306,12 +304,12 @@ for trade in approved_trades:
         )
 
         if final_result.success:
-            print(f"✅ Trade executed: {trade['target']} (order_id={final_result.order_id})")
+            print(f"✅ 交易已执行：{trade['target']}（order_id={final_result.order_id}）")
         else:
-            print(f"❌ IBKR submission failed: {final_result.error}")
+            print(f"❌ IBKR 提交失败：{final_result.error}")
 
     except Exception as e:
-        print(f"❌ Error submitting to IBKR: {e}")
+        print(f"❌ 提交至 IBKR 时出错：{e}")
         update_trade_status(result.trade_id, "FAILED")
 ```
 """

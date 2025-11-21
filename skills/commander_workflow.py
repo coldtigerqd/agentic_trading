@@ -1,11 +1,11 @@
 """
-Commander Workflow - Integration example for Claude Code.
+Commander 工作流 - Claude Code 集成示例。
 
-This module demonstrates how Claude Code (the Commander) should use
-MCP tools and skills library together to execute trading cycles.
+本模块演示 Claude Code (Commander) 应如何结合使用
+MCP 工具和技能库(Claude Code Skills)来执行交易周期。
 
-IMPORTANT: This is meant to be executed BY Claude Code, not as a standalone script.
-The functions here show the expected workflow when Claude is invoked by main_loop.py.
+重要提示：此模块旨在由 Claude Code 执行，而非独立脚本运行。
+此处的函数展示了当 Claude 被 main_loop.py 调用时的预期工作流。
 """
 
 from typing import Dict, List, Any
@@ -14,65 +14,65 @@ from datetime import datetime
 
 def commander_workflow_example():
     """
-    Example workflow showing how Commander (Claude Code) should integrate
-    MCP tools and skills library.
+    示例工作流，展示 Commander (Claude Code) 应如何集成
+    MCP 工具和技能库。
 
-    This is a REFERENCE IMPLEMENTATION for Claude Code to follow.
+    这是供 Claude Code 遵循的参考实现。
 
-    Workflow:
-        1. SENSE: Get account state and market data via MCP tools
-        2. THINK: Consult swarm for trading signals
-        3. DECIDE: Evaluate signals against risk parameters
-        4. ACT: Execute validated orders via MCP tools
+    工作流:
+        1. SENSE（感知）: 通过 MCP 工具获取账户状态和市场数据
+        2. THINK（思考）: 咨询蜂群获取交易信号
+        3. DECIDE（决策）: 根据风险参数评估信号
+        4. ACT（执行）: 通过 MCP 工具执行经验证的订单
     """
 
-    # === PHASE 1: SENSE ===
-    # Use IBKR MCP to get account state
-    # Example: account = mcp__ibkr__get_account()
-    # Example: positions = mcp__ibkr__get_positions()
+    # === 阶段 1：感知 ===
+    # 使用 IBKR MCP 获取账户状态
+    # 示例: account = mcp__ibkr__get_account()
+    # 示例: positions = mcp__ibkr__get_positions()
 
-    # Use ThetaData MCP to get market data for symbol pool
-    # Example: quotes = mcp__ThetaData__stock_snapshot_quote(symbol=["AAPL", "NVDA"])
-    # Example: options = mcp__ThetaData__option_snapshot_quote(symbol="AAPL", expiration="20251128")
+    # 使用 ThetaData MCP 获取标的池的市场数据
+    # 示例: quotes = mcp__ThetaData__stock_snapshot_quote(symbol=["AAPL", "NVDA"])
+    # 示例: options = mcp__ThetaData__option_snapshot_quote(symbol="AAPL", expiration="20251128")
 
-    # === PHASE 2: THINK ===
-    # Consult swarm intelligence for trading signals
+    # === 阶段 2：思考 ===
+    # 咨询蜂群智能获取交易信号
     from skills import consult_swarm
 
-    # Build market data snapshot from MCP results
+    # 从 MCP 结果构建市场数据快照
     market_data = {
         "timestamp": datetime.now().isoformat(),
         "symbols": ["AAPL", "NVDA", "AMD"],
-        "quotes": {},  # Fill from ThetaData MCP
-        "options_chains": {},  # Fill from ThetaData MCP
-        "account": {},  # Fill from IBKR MCP
-        "positions": []  # Fill from IBKR MCP
+        "quotes": {},  # 从 ThetaData MCP 填充
+        "options_chains": {},  # 从 ThetaData MCP 填充
+        "account": {},  # 从 IBKR MCP 填充
+        "positions": []  # 从 IBKR MCP 填充
     }
 
     signals = consult_swarm(sector="TECH", market_data=market_data)
 
-    # === PHASE 3: DECIDE ===
-    # Evaluate each signal against risk parameters
+    # === 阶段 3：决策 ===
+    # 根据风险参数评估每个信号
     approved_trades = []
 
     for signal in signals:
         if signal["signal"] == "NO_TRADE":
             continue
 
-        # Calculate risk for this signal
-        # Use kelly_criterion and other math_core functions
+        # 计算此信号的风险
+        # 使用 kelly_criterion 和其他 math_core 函数
         from skills import kelly_criterion
 
-        # Validate against safety parameters
-        # - Max $500 risk per trade
-        # - Max $2000 capital per trade
-        # - Check total portfolio delta exposure
+        # 根据安全参数验证
+        # - 单笔交易最大风险 $500
+        # - 单笔交易最大资金 $2000
+        # - 检查投资组合总 delta 敞口
 
         if meets_risk_criteria(signal):
             approved_trades.append(signal)
 
-    # === PHASE 4: ACT ===
-    # Execute approved trades via IBKR MCP
+    # === 阶段 4：执行 ===
+    # 通过 IBKR MCP 执行批准的交易
     from skills import place_order_with_guard
 
     for trade in approved_trades:
@@ -86,83 +86,83 @@ def commander_workflow_example():
         )
 
         if result.success:
-            # Order submitted successfully via IBKR MCP
-            print(f"✅ Trade executed: {trade['target']} {trade['signal']}")
+            # 订单已通过 IBKR MCP 成功提交
+            print(f"✅ 交易已执行: {trade['target']} {trade['signal']}")
         else:
-            # Order rejected by safety layer
-            print(f"❌ Trade rejected: {result.error}")
+            # 订单被安全层拒绝
+            print(f"❌ 交易被拒绝: {result.error}")
 
 
 def meets_risk_criteria(signal: Dict) -> bool:
     """
-    Validate signal against risk parameters.
+    根据风险参数验证信号。
 
-    Safety checks:
-    - Max risk per trade: $500
-    - Max capital per trade: $2000
-    - Total portfolio delta exposure
-    - No overlapping positions
+    安全检查:
+    - 单笔交易最大风险：$500
+    - 单笔交易最大资金：$2000
+    - 投资组合总 delta 敞口
+    - 无重叠持仓
     """
-    # TODO: Implement full risk validation
+    # 待办：实现完整的风险验证
     return True
 
 
 def convert_signal_to_legs(signal: Dict) -> List[Dict]:
     """
-    Convert swarm signal to IBKR order legs format.
+    将蜂群信号转换为 IBKR 订单腿格式。
 
-    Example:
-        Input: {"signal": "SHORT_PUT_SPREAD", "params": {"strike_short": 175, ...}}
-        Output: [
+    示例:
+        输入: {"signal": "SHORT_PUT_SPREAD", "params": {"strike_short": 175, ...}}
+        输出: [
             {"action": "SELL", "contract": {...}, "quantity": 1},
             {"action": "BUY", "contract": {...}, "quantity": 1}
         ]
     """
-    # TODO: Implement signal-to-legs conversion
+    # 待办：实现信号到订单腿的转换
     return []
 
 
 def calculate_max_risk(signal: Dict) -> float:
-    """Calculate maximum risk for this trade."""
-    # TODO: Implement risk calculation based on option spreads
+    """计算此笔交易的最大风险。"""
+    # 待办：基于期权价差实现风险计算
     return 500.0
 
 
 def calculate_capital(signal: Dict) -> float:
-    """Calculate capital required for this trade."""
-    # TODO: Implement capital calculation
+    """计算此笔交易所需资金。"""
+    # 待办：实现资金计算
     return 2000.0
 
 
-# === INTEGRATION GUIDE FOR CLAUDE CODE ===
+# === CLAUDE CODE 集成指南 ===
 """
-When invoked by main_loop.py, Claude Code should:
+当被 main_loop.py 调用时，Claude Code 应该：
 
-1. **Read market data using MCP tools**:
+1. **使用 MCP 工具读取市场数据**：
    ```python
-   # Get account status
+   # 获取账户状态
    account = mcp__ibkr__get_account()
    positions = mcp__ibkr__get_positions()
 
-   # Get market quotes
+   # 获取市场报价
    tech_quotes = mcp__ThetaData__stock_snapshot_quote(
        symbol=["AAPL", "NVDA", "AMD", "TSLA"]
    )
 
-   # Get options data for symbols with high IV
+   # 获取高隐含波动率标的的期权数据
    for symbol in tech_quotes:
        if should_analyze_options(symbol):
            options = mcp__ThetaData__option_snapshot_quote(
                symbol=symbol,
-               expiration="20251128"  # 30-45 DTE target
+               expiration="20251128"  # 目标 30-45 天到期
            )
    ```
 
-2. **Consult swarm intelligence**:
+2. **咨询蜂群智能**：
    ```python
    from skills import consult_swarm
 
-   # Pass real market data to swarm
+   # 向蜂群传递真实的市场数据
    signals = consult_swarm(
        sector="TECH",
        market_data={
@@ -175,12 +175,12 @@ When invoked by main_loop.py, Claude Code should:
    )
    ```
 
-3. **Evaluate signals**:
+3. **评估信号**：
    ```python
    from skills import kelly_criterion, black_scholes_iv
 
    for signal in signals:
-       # Calculate position size using Kelly Criterion
+       # 使用 Kelly Criterion 计算仓位大小
        position_size = kelly_criterion(
            win_prob=signal["confidence"],
            win_amount=500,
@@ -189,19 +189,19 @@ When invoked by main_loop.py, Claude Code should:
            fraction=0.25
        )
 
-       # Validate IV calculations
+       # 验证隐含波动率计算
        iv = black_scholes_iv(...)
 
-       # Check against safety limits
+       # 检查安全限制
        if position_size > 2000:
-           continue  # Reject - exceeds capital limit
+           continue  # 拒绝 - 超过资金限制
    ```
 
-4. **Execute orders via MCP**:
+4. **通过 MCP 执行订单**：
    ```python
    from skills import place_order_with_guard
 
-   # place_order_with_guard internally calls IBKR MCP
+   # place_order_with_guard 内部调用 IBKR MCP
    result = place_order_with_guard(
        symbol="NVDA",
        strategy="SHORT_PUT_SPREAD",
@@ -214,8 +214,8 @@ When invoked by main_loop.py, Claude Code should:
    )
    ```
 
-5. **Monitor and log**:
-   - All decisions are automatically logged to data_lake/snapshots/
-   - All trades are logged to data_lake/trades.db
-   - Watchdog monitors via heartbeat file
+5. **监控和日志**：
+   - 所有决策自动记录到 data_lake/snapshots/
+   - 所有交易记录到 data_lake/trades.db
+   - Watchdog 通过心跳文件监控
 """
