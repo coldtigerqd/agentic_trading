@@ -298,7 +298,7 @@ def get_next_market_open(dt: Optional[datetime] = None) -> Tuple[Optional[dateti
     for _ in range(max_days_ahead):
         # 如果当前时间在交易日的开盘时间之前
         if is_trading_day(check_date):
-            market_open_dt = datetime.combine(check_date.date(), MARKET_OPEN_TIME)
+            market_open_dt = datetime.combine(check_date.date(), MARKET_OPEN_TIME, tzinfo=ET)
 
             # 如果在交易日但在开盘时间之前
             if check_date.time() < MARKET_OPEN_TIME:
@@ -308,7 +308,8 @@ def get_next_market_open(dt: Optional[datetime] = None) -> Tuple[Optional[dateti
         # 移至下一天的开盘时间
         check_date = datetime.combine(
             check_date.date() + timedelta(days=1),
-            MARKET_OPEN_TIME
+            MARKET_OPEN_TIME,
+            tzinfo=ET
         )
 
     # 未来 10 天内未找到市场开盘时间

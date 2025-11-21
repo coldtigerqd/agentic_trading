@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List
 import pytz
+import httpx
 
 from data_lake.market_data_manager import insert_bars, get_latest_bar, OHLCVBar
 from data_lake.db_helpers import get_db_connection
@@ -15,6 +16,89 @@ from skills.market_calendar import get_market_session_info
 
 logger = logging.getLogger(__name__)
 ET = pytz.timezone('US/Eastern')
+
+# ThetaData Terminal Server configuration
+THETA_API_BASE_URL = "http://127.0.0.1:25503"  # ThetaData Terminal 端口
+
+
+def fetch_stock_snapshot_quote(symbols: List[str]) -> Dict:
+    """
+    使用 httpx 从 ThetaData Terminal Server 获取股票快照 OHLC 数据
+
+    Args:
+        symbols: 股票代码列表
+
+    Returns:
+        {
+            'success': bool,
+            'data': List[Dict],  # 每个股票的快照数据
+            'errors': List[str]
+        }
+    """
+    try:
+        # ThetaData snapshot API 端点 - 使用 OHLC (v3 API)
+        url = f"{THETA_API_BASE_URL}/v3/stock/snapshot/ohlc"
+
+        # 构建请求参数 (v3 使用 'symbol' 而不是 'root')
+        params = {
+            'symbol': ','.join(symbols),  # 逗号分隔的股票列表
+            'venue': 'utp_cta',  # 使用 UTP & CTA 15 分钟延迟数据（无需高级订阅）
+            'format': 'json'  # 指定返回 JSON 格式（默认是 CSV）
+        }
+
+        # 发送 HTTP GET 请求
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(url, params=params)
+            response.raise_for_status()
+
+            # 解析响应
+            result = response.json()
+
+            # ThetaData v3 API 返回格式：
+            # {
+            #     "response": [
+            #         {"symbol": "SPY", "open": 672.9, "high": 675.56, ...},
+            #         {"symbol": "QQQ", "open": 611.67, "high": 614.03, ...}
+            #     ]
+            # }
+
+            if 'response' not in result:
+                return {
+                    'success': False,
+                    'data': [],
+                    'errors': [f"Invalid response format: missing 'response' key"]
+                }
+
+            # v3 API 直接返回字典列表，无需转换
+            snapshots = result['response']
+
+            return {
+                'success': True,
+                'data': snapshots,
+                'errors': []
+            }
+
+    except httpx.TimeoutException as e:
+        logger.error(f"ThetaData API timeout: {e}")
+        return {
+            'success': False,
+            'data': [],
+            'errors': [f"API request timeout: {str(e)}"]
+        }
+    except httpx.HTTPStatusError as e:
+        logger.error(f"ThetaData API HTTP error: {e}")
+        return {
+            'success': False,
+            'data': [],
+            'errors': [f"HTTP {e.response.status_code}: {str(e)}"]
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch snapshot: {e}")
+        return {
+            'success': False,
+            'data': [],
+            'errors': [f"Unexpected error: {str(e)}"]
+        }
 
 
 def get_watchlist_symbols() -> List[Dict]:
@@ -139,9 +223,10 @@ def sync_watchlist_incremental(
     max_symbols: int = None
 ) -> Dict:
     """
-    增量同步观察列表数据
+    增量同步观察列表数据（直接从 ThetaData API 获取并缓存）
 
-    这个函数返回需要同步的股票列表，由 Commander 实际调用 MCP。
+    使用 httpx 调用 ThetaData Terminal Server API 获取快照数据，
+    并自动缓存到本地数据库。
 
     Args:
         skip_if_market_closed: 如果市场关闭，是否跳过同步
@@ -149,23 +234,32 @@ def sync_watchlist_incremental(
 
     Returns:
         {
-            'should_sync': bool,
+            'success': bool,
             'market_status': dict,
-            'symbols_to_sync': List[str],
             'total_symbols': int,
-            'message': str
+            'synced_count': int,
+            'failed_count': int,
+            'results': List[Dict],  # 每个股票的同步结果
+            'errors': List[str],
+            'execution_time': float
         }
     """
+    import time
+    start_time = time.time()
+
     # 检查市场状态
     session_info = get_market_session_info()
 
     if skip_if_market_closed and not session_info['market_open']:
         return {
-            'should_sync': False,
+            'success': False,
             'market_status': session_info,
-            'symbols_to_sync': [],
             'total_symbols': 0,
-            'message': f"Market closed ({session_info['session']}). Next open: {session_info.get('next_market_open', 'N/A')}"
+            'synced_count': 0,
+            'failed_count': 0,
+            'results': [],
+            'errors': [f"Market closed ({session_info['session']}). Next open: {session_info.get('next_market_open', 'N/A')}"],
+            'execution_time': time.time() - start_time
         }
 
     # 获取观察列表
@@ -173,11 +267,14 @@ def sync_watchlist_incremental(
 
     if not watchlist:
         return {
-            'should_sync': False,
+            'success': False,
             'market_status': session_info,
-            'symbols_to_sync': [],
             'total_symbols': 0,
-            'message': 'Watchlist is empty'
+            'synced_count': 0,
+            'failed_count': 0,
+            'results': [],
+            'errors': ['Watchlist is empty'],
+            'execution_time': time.time() - start_time
         }
 
     # 提取股票代码
@@ -187,13 +284,86 @@ def sync_watchlist_incremental(
     if max_symbols:
         symbols = symbols[:max_symbols]
 
+    # 使用 httpx 从 ThetaData API 获取快照数据
+    snapshot_result = fetch_stock_snapshot_quote(symbols)
+
+    if not snapshot_result['success']:
+        return {
+            'success': False,
+            'market_status': session_info,
+            'total_symbols': len(symbols),
+            'synced_count': 0,
+            'failed_count': len(symbols),
+            'results': [],
+            'errors': snapshot_result['errors'],
+            'execution_time': time.time() - start_time
+        }
+
+    # 处理每个快照数据并缓存到数据库
+    results = []
+    synced_count = 0
+    failed_count = 0
+    errors = []
+
+    for snapshot in snapshot_result['data']:
+        try:
+            # 提取股票代码（v3 API 直接返回 'symbol' 字段）
+            symbol = snapshot.get('symbol', 'UNKNOWN')
+
+            # v3 API 已经返回标准化的 OHLC 数据，直接使用
+            # 字段包括: timestamp, symbol, open, high, low, close, volume, count
+            normalized_snapshot = {
+                'timestamp': snapshot.get('timestamp'),
+                'open': snapshot.get('open'),
+                'high': snapshot.get('high'),
+                'low': snapshot.get('low'),
+                'close': snapshot.get('close'),
+                'volume': snapshot.get('volume'),
+                'vwap': snapshot.get('vwap')  # 可选字段
+            }
+
+            # 缓存到数据库
+            cache_result = process_snapshot_and_cache(symbol, normalized_snapshot)
+
+            if cache_result['success']:
+                synced_count += 1
+                results.append({
+                    'symbol': symbol,
+                    'status': 'synced',
+                    'bars_added': cache_result['bars_added'],
+                    'timestamp': cache_result['timestamp']
+                })
+            else:
+                failed_count += 1
+                errors.append(f"{symbol}: {cache_result.get('error', 'Unknown error')}")
+                results.append({
+                    'symbol': symbol,
+                    'status': 'failed',
+                    'error': cache_result.get('error')
+                })
+
+        except Exception as e:
+            failed_count += 1
+            error_msg = f"Failed to process {snapshot.get('symbol', 'UNKNOWN')}: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg)
+            results.append({
+                'symbol': snapshot.get('symbol', 'UNKNOWN'),
+                'status': 'error',
+                'error': str(e)
+            })
+
+    execution_time = time.time() - start_time
+
     return {
-        'should_sync': True,
+        'success': synced_count > 0,
         'market_status': session_info,
-        'symbols_to_sync': symbols,
         'total_symbols': len(symbols),
-        'watchlist': watchlist[:max_symbols] if max_symbols else watchlist,
-        'message': f"Ready to sync {len(symbols)} symbols"
+        'synced_count': synced_count,
+        'failed_count': failed_count,
+        'results': results,
+        'errors': errors,
+        'execution_time': execution_time
     }
 
 
