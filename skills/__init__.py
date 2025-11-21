@@ -56,6 +56,18 @@ from .technical_indicators import (
     calculate_obv,
     calculate_vwap
 )
+from .indicator_helpers import (
+    # Exception Classes
+    InsufficientDataError,
+    InvalidDataError,
+    # Safe Wrapper Functions
+    safe_calculate_sma,
+    safe_calculate_rsi,
+    safe_calculate_macd,
+    safe_calculate_historical_volatility,
+    safe_detect_trend,
+    calculate_all_indicators_safe
+)
 from .watchlist_manager import (
     calculate_symbol_score,
     update_watchlist,
@@ -68,6 +80,12 @@ from .data_sync import (
     process_snapshot_and_cache,
     get_data_freshness_report,
     get_watchlist_symbols
+)
+from .workflow_skills import (
+    run_full_trading_analysis,
+    run_market_health_check,
+    run_position_risk_analysis,
+    TradingAnalysisResult
 )
 
 __all__ = [
@@ -116,6 +134,15 @@ __all__ = [
     # Technical Indicators - Volume
     "calculate_obv",
     "calculate_vwap",
+    # Technical Indicators - Safe Helpers
+    "InsufficientDataError",
+    "InvalidDataError",
+    "safe_calculate_sma",
+    "safe_calculate_rsi",
+    "safe_calculate_macd",
+    "safe_calculate_historical_volatility",
+    "safe_detect_trend",
+    "calculate_all_indicators_safe",
     # Watchlist Manager
     "calculate_symbol_score",
     "update_watchlist",
@@ -126,7 +153,12 @@ __all__ = [
     "sync_watchlist_incremental",
     "process_snapshot_and_cache",
     "get_data_freshness_report",
-    "get_watchlist_symbols"
+    "get_watchlist_symbols",
+    # Workflow Skills (High-Level)
+    "run_full_trading_analysis",
+    "run_market_health_check",
+    "run_position_risk_analysis",
+    "TradingAnalysisResult"
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"  # 升级版本号，反映架构优化

@@ -13,8 +13,8 @@ from data_lake.market_data_manager import (
     get_freshness_info,
     OHLCVBar
 )
-from runtime.data_fetcher import (
-    get_active_watchlist,
+from .watchlist_manager import (
+    get_current_watchlist,
     add_to_watchlist as _add_to_watchlist,
     remove_from_watchlist as _remove_from_watchlist
 )
@@ -256,7 +256,7 @@ def get_watchlist() -> Dict:
         ```
     """
     try:
-        symbols = get_active_watchlist()
+        symbols = get_current_watchlist()
 
         # 为每个标的添加新鲜度信息
         for symbol_info in symbols:
