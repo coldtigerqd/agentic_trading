@@ -307,6 +307,82 @@ python scripts/demo_incremental_sync.py
 
 ---
 
+#### `scripts/backfill_historical_data.py`
+**功能**: 3年历史数据回填工具
+
+**使用方法**:
+```bash
+# 回填3年数据（所有观察列表股票）
+python scripts/backfill_historical_data.py --days 1095
+
+# 测试模式：仅回填1个股票的7天数据
+python scripts/backfill_historical_data.py --max-symbols 1 --max-dates 7
+
+# 自定义回填参数
+python scripts/backfill_historical_data.py --days 730 --interval 5m --max-symbols 5
+
+# 后台运行
+nohup python scripts/backfill_historical_data.py --days 1095 > logs/backfill_3years.log 2>&1 &
+```
+
+**说明**:
+- ✅ 使用 ThetaData Terminal v3 API (`/v3/stock/history/ohlc`)
+- ✅ 支持5分钟、15分钟、1小时级别数据回填
+- ✅ 智能交易日生成（自动跳过周末）
+- ✅ 批量插入优化（每个股票完成后写入数据库）
+- ✅ API 限流保护（0.2秒/请求）
+- ✅ 断点续传支持（`--max-dates` 参数）
+- ✅ 进度实时显示（每10个交易日报告一次）
+
+**预计时间**:
+- 10个股票 × 3年（~783个交易日）= 约2-2.5小时
+- 单个股票 × 3年 = 约15-20分钟
+
+**监控工具**:
+```bash
+# 实时查看回填日志
+tail -f logs/backfill_3years.log
+
+# 查看回填进度
+scripts/monitor_backfill.sh
+
+# 检查数据库状态
+python scripts/check_backfill_status.py
+```
+
+---
+
+#### `scripts/monitor_backfill.sh`
+**功能**: 回填进度监控脚本
+
+**使用方法**:
+```bash
+scripts/monitor_backfill.sh
+```
+
+**说明**:
+- 显示回填进程状态
+- 展示最新日志（最后20行）
+- 统计已完成股票数和插入数据条数
+
+---
+
+#### `scripts/check_backfill_status.py`
+**功能**: 数据库回填状态检查工具
+
+**使用方法**:
+```bash
+python scripts/check_backfill_status.py
+```
+
+**说明**:
+- 显示每个股票的数据统计
+- 显示数据时间范围（最早/最新）
+- 计算回填进度百分比
+- 预估剩余时间和目标数据量
+
+---
+
 ### 6.3 测试与验证脚本
 
 #### `verify_setup.py`
