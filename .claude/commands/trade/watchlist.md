@@ -1,3 +1,7 @@
+---
+description: "显示观察列表 - 查看所有标的和数据状态"
+---
+
 # Trade Watchlist Command
 
 显示当前观察列表，包括所有标的、优先级和数据新鲜度状态。

@@ -1,3 +1,7 @@
+---
+description: "分析标的 - 用指定策略分析特定股票"
+---
+
 # Trade Analyze Symbol Command
 
 使用特定策略分析特定标的（用于测试和学习）。

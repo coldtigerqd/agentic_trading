@@ -1,3 +1,7 @@
+---
+description: "启用策略 - 激活一个策略实例"
+---
+
 # Trade Strategy Enable Command
 
 启用一个策略实例。

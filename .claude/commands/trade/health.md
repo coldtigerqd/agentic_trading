@@ -1,3 +1,7 @@
+---
+description: "市场健康检查 - 检查市场状态和数据质量"
+---
+
 # Trade Health Command
 
 快速市场健康检查。

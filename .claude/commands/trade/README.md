@@ -1,3 +1,7 @@
+---
+description: "帮助文档 - 显示交易系统完整命令参考"
+---
+
 # Trading Commands Reference
 
 显示 Agentic AlphaHive 交易系统的完整命令文档。

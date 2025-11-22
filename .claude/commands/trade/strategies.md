@@ -1,3 +1,7 @@
+---
+description: "策略列表 - 显示所有蜂群智能策略实例"
+---
+
 # Trade Strategies Command
 
 列出所有蜂群智能策略实例及其配置。

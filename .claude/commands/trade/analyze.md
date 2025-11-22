@@ -1,3 +1,7 @@
+---
+description: "完整交易分析 - 执行7步分析流程生成交易信号"
+---
+
 # Trade Analyze Command
 
 执行完整的7步交易分析工作流。

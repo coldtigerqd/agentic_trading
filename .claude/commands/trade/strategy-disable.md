@@ -1,3 +1,7 @@
+---
+description: "禁用策略 - 停用一个策略实例"
+---
+
 # Trade Strategy Disable Command
 
 禁用一个策略实例（保留所有配置）。

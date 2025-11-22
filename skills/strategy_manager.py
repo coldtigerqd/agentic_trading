@@ -185,19 +185,185 @@ def _set_strategy_enabled(instance_id: str, enabled: bool) -> bool:
         return False
 
 
+def create_strategy(
+    instance_id: str,
+    template_name: str,
+    symbol_pool: List[str],
+    parameters: Optional[Dict] = None,
+    description: str = "",
+    priority: int = 5,
+    enabled: bool = True
+) -> bool:
+    """
+    创建新的策略实例
+
+    Args:
+        instance_id: 策略实例ID（唯一标识符，将作为文件名）
+        template_name: 策略模板名称（对应 templates/ 目录下的 .md 文件）
+        symbol_pool: 标的池列表
+        parameters: 策略参数字典（可选，会合并到配置中）
+        description: 策略描述（可选）
+        priority: 优先级 1-10（默认5）
+        enabled: 是否启用（默认True）
+
+    Returns:
+        成功返回True，失败返回False
+    """
+    # 验证实例ID格式（只允许字母、数字、下划线、连字符）
+    import re
+    if not re.match(r'^[a-zA-Z0-9_-]+$', instance_id):
+        print(f"错误: 实例ID '{instance_id}' 格式无效（只允许字母、数字、下划线、连字符）")
+        return False
+
+    # 检查实例是否已存在
+    json_path = INSTANCES_DIR / f"{instance_id}.json"
+    if json_path.exists():
+        print(f"错误: 策略实例 '{instance_id}' 已存在")
+        return False
+
+    # 验证模板文件是否存在
+    templates_dir = Path(__file__).parent.parent / "swarm_intelligence" / "templates"
+    template_path = templates_dir / template_name
+    if not template_path.exists():
+        # 尝试自动添加 .md 扩展名
+        if not template_name.endswith('.md'):
+            template_path = templates_dir / f"{template_name}.md"
+
+        if not template_path.exists():
+            print(f"错误: 策略模板 '{template_name}' 不存在")
+            print(f"可用模板: {[f.stem for f in templates_dir.glob('*.md')]}")
+            return False
+
+    # 验证优先级范围
+    if not 1 <= priority <= 10:
+        print(f"错误: 优先级必须在 1-10 之间（当前值: {priority}）")
+        return False
+
+    # 验证标的池不为空
+    if not symbol_pool or len(symbol_pool) == 0:
+        print(f"错误: 标的池不能为空")
+        return False
+
+    # 验证标的格式
+    for symbol in symbol_pool:
+        if not re.match(r'^[A-Z]{2,5}$', symbol):
+            print(f"错误: 标的 '{symbol}' 格式无效（必须是2-5个大写字母）")
+            return False
+
+    # 构建配置
+    config = {
+        "id": instance_id,
+        "template": template_path.name,
+        "description": description,
+        "priority": priority,
+        "enabled": enabled,
+        "parameters": {
+            "symbol_pool": symbol_pool
+        },
+        "created_at": datetime.now().isoformat(),
+        "notes": ""
+    }
+
+    # 合并额外的参数
+    if parameters:
+        config["parameters"].update(parameters)
+
+    # 确保目录存在
+    INSTANCES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 写入配置文件（原子操作）
+    temp_path = INSTANCES_DIR / f"{instance_id}.json.tmp"
+
+    try:
+        # 写入临时文件
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
+        # 验证临时文件是否有效的JSON
+        with open(temp_path, 'r', encoding='utf-8') as f:
+            json.load(f)
+
+        # 原子地重命名
+        os.replace(temp_path, json_path)
+
+        print(f"✓ 成功创建策略实例: {instance_id}")
+        return True
+
+    except Exception as e:
+        print(f"错误: 创建策略实例失败 - {e}")
+        # 清理临时文件
+        if temp_path.exists():
+            temp_path.unlink()
+        return False
+
+
+def delete_strategy(instance_id: str, force: bool = False) -> bool:
+    """
+    删除策略实例
+
+    Args:
+        instance_id: 策略实例ID
+        force: 是否强制删除（即使策略已启用）
+
+    Returns:
+        成功返回True，失败返回False
+    """
+    json_path = INSTANCES_DIR / f"{instance_id}.json"
+
+    if not json_path.exists():
+        print(f"错误: 策略实例 '{instance_id}' 不存在")
+        return False
+
+    try:
+        # 读取配置检查是否启用
+        with open(json_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        if config.get('enabled', False) and not force:
+            print(f"⚠ 策略实例 '{instance_id}' 当前处于启用状态")
+            print(f"  如需删除，请先禁用或使用 --force 参数强制删除")
+            return False
+
+        # 创建备份（可选）
+        backup_dir = INSTANCES_DIR / ".deleted"
+        backup_dir.mkdir(exist_ok=True)
+
+        backup_path = backup_dir / f"{instance_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+        # 复制到备份目录
+        import shutil
+        shutil.copy2(json_path, backup_path)
+
+        # 删除原文件
+        json_path.unlink()
+
+        print(f"✓ 成功删除策略实例: {instance_id}")
+        print(f"  备份已保存至: {backup_path}")
+        return True
+
+    except json.JSONDecodeError as e:
+        print(f"错误: JSON格式无效 - {e}")
+        return False
+
+    except Exception as e:
+        print(f"错误: 删除策略实例失败 - {e}")
+        return False
+
+
 def analyze_with_strategy(
     symbol: str,
     instance_id: str,
     market_data: Optional[object] = None
 ) -> Dict:
     """
-    使用特定策略分析特定标的
+    使用特定策略分析特定标的（LLM-based分析）
 
-    注意：这是一个简化的实现框架。完整实现需要：
-    1. 加载策略模板代码
-    2. 获取/验证市场数据
-    3. 执行策略分析逻辑
-    4. 返回结构化的分析结果
+    工作流程：
+    1. 加载策略配置和提示词模板
+    2. 获取历史K线数据（15分钟周期，600条）
+    3. 组合提示词模板和市场数据
+    4. 执行LLM分析
+    5. 解析并返回结构化结果
 
     Args:
         symbol: 标的符号
@@ -213,6 +379,25 @@ def analyze_with_strategy(
         - suggested_trade: 建议的交易结构（如果可操作）
         - warnings: 警告列表
     """
+    import re
+    import json
+    from pathlib import Path
+    import sys
+
+    # 动态导入数据获取模块
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from market_data_fetcher import fetch_kline_data, format_kline_for_llm, get_kline_summary
+    except ImportError as e:
+        return {
+            'signal': 'ERROR',
+            'confidence': 0.0,
+            'reasoning': f"错误: 无法导入数据获取模块 - {e}",
+            'metrics': {},
+            'suggested_trade': None,
+            'warnings': ['market_data_fetcher模块缺失']
+        }
+
     # 1. 加载策略配置
     config = get_strategy_config(instance_id)
     if not config:
@@ -226,7 +411,6 @@ def analyze_with_strategy(
         }
 
     # 2. 验证标的格式
-    import re
     if not re.match(r'^[A-Z]{2,5}$', symbol):
         return {
             'signal': 'ERROR',
@@ -237,24 +421,89 @@ def analyze_with_strategy(
             'warnings': []
         }
 
-    # 3. 占位符实现 - 实际实现需要导入并执行策略模板
-    # TODO: 实现完整的策略执行逻辑
-    #   - 从 swarm_intelligence/templates/ 导入策略模板
-    #   - 获取市场数据（从缓存或ThetaData）
-    #   - 执行策略的 analyze() 函数
-    #   - 返回结构化结果
+    # 3. 加载策略模板
+    templates_dir = Path(__file__).parent.parent / "swarm_intelligence" / "templates"
+    template_path = templates_dir / config.get('template')
 
+    if not template_path.exists():
+        return {
+            'signal': 'ERROR',
+            'confidence': 0.0,
+            'reasoning': f"错误: 策略模板 '{config.get('template')}' 不存在",
+            'metrics': {},
+            'suggested_trade': None,
+            'warnings': []
+        }
+
+    try:
+        with open(template_path, 'r', encoding='utf-8') as f:
+            strategy_prompt = f.read()
+    except Exception as e:
+        return {
+            'signal': 'ERROR',
+            'confidence': 0.0,
+            'reasoning': f"错误: 无法读取策略模板 - {e}",
+            'metrics': {},
+            'suggested_trade': None,
+            'warnings': []
+        }
+
+    # 4. 获取K线数据（15分钟周期，600条）
+    print(f"正在获取 {symbol} 的历史K线数据...")
+    kline_df = fetch_kline_data(symbol, interval="15min", limit=600)
+
+    if kline_df is None or kline_df.empty:
+        return {
+            'signal': 'ERROR',
+            'confidence': 0.0,
+            'reasoning': f"错误: 无法获取 '{symbol}' 的历史数据。请确保数据已缓存。",
+            'metrics': {},
+            'suggested_trade': None,
+            'warnings': ['数据缺失', '请运行 /trade:sync 同步数据']
+        }
+
+    # 5. 格式化数据为LLM友好格式
+    kline_text = format_kline_for_llm(kline_df, max_rows=600)
+    data_summary = get_kline_summary(kline_df)
+
+    print(f"✓ 成功获取 {data_summary['total_bars']} 条K线数据")
+    print(f"  时间范围: {data_summary['time_range']['start']} ~ {data_summary['time_range']['end']}")
+    print(f"  当前价格: ${data_summary['price_range']['current']:.2f}")
+
+    # 6. 组合完整提示词
+    full_prompt = f"{strategy_prompt}\n\n{kline_text}\n\n---\n\n请根据以上K线数据进行缠论分析，并按JSON格式输出结果。"
+
+    # 7. 执行LLM分析
+    print(f"\n正在使用LLM分析 {symbol}...")
+
+    # 将提示词保存到临时文件，供Task工具使用
+    temp_dir = Path(__file__).parent.parent / "temp"
+    temp_dir.mkdir(exist_ok=True)
+    temp_prompt_path = temp_dir / f"chan_analysis_{symbol}_{instance_id}.txt"
+
+    with open(temp_prompt_path, 'w', encoding='utf-8') as f:
+        f.write(full_prompt)
+
+    print(f"✓ 分析提示词已保存至: {temp_prompt_path}")
+
+    # 返回指引信息
     return {
-        'signal': 'HOLD',
+        'signal': 'PENDING',
         'confidence': 0.0,
-        'reasoning': '功能尚未完全实现。此为占位符返回。',
+        'reasoning': f"缠论分析提示词已生成。请手动执行LLM分析或集成LLM API。提示词文件: {temp_prompt_path}",
         'metrics': {
-            'template': config.get('template_name'),
-            'sector': config.get('sector'),
-            'symbol': symbol
+            'template': config.get('template'),
+            'symbol': symbol,
+            'data_bars': data_summary['total_bars'],
+            'time_range': data_summary['time_range'],
+            'current_price': data_summary['price_range']['current'],
+            'prompt_file': str(temp_prompt_path)
         },
         'suggested_trade': None,
-        'warnings': ['analyze_with_strategy() 功能尚未完全实现']
+        'warnings': [
+            'LLM分析需要手动执行',
+            '未来版本将集成Claude API自动分析'
+        ]
     }
 
 
@@ -264,5 +513,7 @@ __all__ = [
     'get_strategy_config',
     'enable_strategy',
     'disable_strategy',
+    'create_strategy',
+    'delete_strategy',
     'analyze_with_strategy',
 ]

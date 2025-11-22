@@ -1,3 +1,7 @@
+---
+description: "移除标的 - 从观察列表中移除股票"
+---
+
 # Trade Watchlist Remove Command
 
 从观察列表中移除一个或多个标的（软删除，保留历史数据）。

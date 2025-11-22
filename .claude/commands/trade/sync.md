@@ -1,3 +1,7 @@
+---
+description: "数据同步 - 手动同步最新市场数据"
+---
+
 # Trade Sync Command
 
 手动触发数据同步。

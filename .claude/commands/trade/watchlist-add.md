@@ -1,3 +1,7 @@
+---
+description: "添加标的 - 将股票添加到观察列表"
+---
+
 # Trade Watchlist Add Command
 
 添加一个或多个标的到观察列表。

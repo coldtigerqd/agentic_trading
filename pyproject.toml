@@ -1,0 +1,24 @@
+[project]
+name = "agentic-trading"
+version = "0.1.0"
+description = "Agentic AlphaHive Trading System with MCP Servers"
+requires-python = ">=3.12"
+dependencies = [
+    # Core Dependencies
+    "ib-insync>=0.9.86",
+    "jinja2>=3.1.0",
+    "openai>=1.0.0",
+    "scipy>=1.9.0",
+    "httpx>=0.27.0",
+    "pytz>=2024.1",
+    "pandas>=2.0.0",
+
+    # Testing
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.10.0",
+
+    # Type checking and linting
+    "mypy>=1.0.0",
+    "black>=23.0.0",
+]

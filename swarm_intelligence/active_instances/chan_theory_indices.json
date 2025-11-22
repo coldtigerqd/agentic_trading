@@ -1,0 +1,23 @@
+{
+  "id": "chan_theory_indices",
+  "template": "chan_theory.md",
+  "description": "缠论策略应用于主要市场指数，捕捉中大级别趋势和买卖点",
+  "priority": 8,
+  "enabled": true,
+  "parameters": {
+    "symbol_pool": [
+      "SPY",
+      "QQQ",
+      "IWM",
+      "DIA"
+    ],
+    "bi_lookback": 5,
+    "zhongshu_confirm_bars": 9,
+    "divergence_confirm_bars": 3,
+    "min_zhongshu_strength": 0.6,
+    "consolidation_threshold": 0.03,
+    "volume_multiplier": 1.5
+  },
+  "created_at": "2025-11-22T22:47:29.762074",
+  "notes": ""
+}
