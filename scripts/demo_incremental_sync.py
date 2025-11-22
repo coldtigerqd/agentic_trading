@@ -2,6 +2,9 @@
 """
 增量数据同步演示脚本
 
+# NOTE: Example script for educational purposes only
+# For production: Use slash commands → workflow_skills or runtime/data_sync_daemon.py
+
 展示如何使用 ThetaData MCP 和 skills 进行增量数据同步。
 此脚本可以直接运行，或作为 Commander 工作流的参考。
 

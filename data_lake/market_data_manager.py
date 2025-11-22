@@ -11,14 +11,12 @@ import pytz
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
-from pathlib import Path
+
+# Import unified database configuration
+from .db_config import get_db_connection
 
 # Timezone constants
 ET = pytz.timezone('US/Eastern')
-
-
-# Database path
-DB_PATH = Path(__file__).parent / "trades.db"
 
 
 @dataclass
@@ -46,15 +44,6 @@ class OHLCVBar:
         }
 
 
-def get_db_connection() -> sqlite3.Connection:
-    """Get database connection with optimizations enabled"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for concurrency
-    conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes
-    conn.row_factory = sqlite3.Row  # Access columns by name
-    return conn
-
-
 def insert_bars(symbol: str, bars: List[OHLCVBar]) -> int:
     """
     Insert OHLCV bars into the database.
@@ -70,32 +59,30 @@ def insert_bars(symbol: str, bars: List[OHLCVBar]) -> int:
     if not bars:
         return 0
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    # Batch insert with UPSERT
-    insert_sql = """
-    INSERT OR REPLACE INTO market_data_bars
-    (symbol, timestamp, open, high, low, close, volume, vwap)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """
+        # Batch insert with UPSERT
+        insert_sql = """
+        INSERT OR REPLACE INTO market_data_bars
+        (symbol, timestamp, open, high, low, close, volume, vwap)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
 
-    batch_data = [
-        (bar.symbol, bar.timestamp, bar.open, bar.high, bar.low,
-         bar.close, bar.volume, bar.vwap)
-        for bar in bars
-    ]
+        batch_data = [
+            (bar.symbol, bar.timestamp, bar.open, bar.high, bar.low,
+             bar.close, bar.volume, bar.vwap)
+            for bar in bars
+        ]
 
-    cursor.executemany(insert_sql, batch_data)
-    conn.commit()
+        cursor.executemany(insert_sql, batch_data)
 
-    rows_affected = cursor.rowcount
+        rows_affected = cursor.rowcount
 
-    # Update data_freshness
-    _update_freshness(conn, symbol)
+        # Update data_freshness
+        _update_freshness(conn, symbol)
 
-    conn.close()
-    return rows_affected
+        return rows_affected
 
 
 def get_bars(
@@ -117,35 +104,34 @@ def get_bars(
     Returns:
         List of OHLCVBar objects
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    # Query 5-minute bars
-    query = """
-    SELECT symbol, timestamp, open, high, low, close, volume, vwap
-    FROM market_data_bars
-    WHERE symbol = ? AND timestamp >= ? AND timestamp <= ?
-    ORDER BY timestamp ASC
-    """
+        # Query 5-minute bars
+        query = """
+        SELECT symbol, timestamp, open, high, low, close, volume, vwap
+        FROM market_data_bars
+        WHERE symbol = ? AND timestamp >= ? AND timestamp <= ?
+        ORDER BY timestamp ASC
+        """
 
-    cursor.execute(query, (symbol, start.isoformat(), end.isoformat()))
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute(query, (symbol, start.isoformat(), end.isoformat()))
+        rows = cursor.fetchall()
 
-    # Convert to OHLCVBar objects
-    bars_5min = [
-        OHLCVBar(
-            symbol=row["symbol"],
-            timestamp=row["timestamp"],
-            open=row["open"],
-            high=row["high"],
-            low=row["low"],
-            close=row["close"],
-            volume=row["volume"],
-            vwap=row["vwap"]
-        )
-        for row in rows
-    ]
+        # Convert to OHLCVBar objects
+        bars_5min = [
+            OHLCVBar(
+                symbol=row["symbol"],
+                timestamp=row["timestamp"],
+                open=row["open"],
+                high=row["high"],
+                low=row["low"],
+                close=row["close"],
+                volume=row["volume"],
+                vwap=row["vwap"]
+            )
+            for row in rows
+        ]
 
     # Aggregate if needed
     if interval == "5min":
@@ -230,19 +216,18 @@ def detect_gaps(symbol: str) -> List[Dict[str, str]]:
     Returns:
         List of gap dictionaries with 'start', 'end', 'missing_bars'
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    # Get all timestamps for symbol
-    cursor.execute("""
-        SELECT timestamp
-        FROM market_data_bars
-        WHERE symbol = ?
-        ORDER BY timestamp ASC
-    """, (symbol,))
+        # Get all timestamps for symbol
+        cursor.execute("""
+            SELECT timestamp
+            FROM market_data_bars
+            WHERE symbol = ?
+            ORDER BY timestamp ASC
+        """, (symbol,))
 
-    timestamps = [row["timestamp"] for row in cursor.fetchall()]
-    conn.close()
+        timestamps = [row["timestamp"] for row in cursor.fetchall()]
 
     if len(timestamps) < 2:
         return []
@@ -282,28 +267,26 @@ def cleanup_old_data(cutoff_date: datetime) -> int:
     Returns:
         Number of rows deleted
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    delete_sql = """
-    DELETE FROM market_data_bars
-    WHERE timestamp < ?
-    """
+        delete_sql = """
+        DELETE FROM market_data_bars
+        WHERE timestamp < ?
+        """
 
-    cursor.execute(delete_sql, (cutoff_date.isoformat(),))
-    conn.commit()
+        cursor.execute(delete_sql, (cutoff_date.isoformat(),))
 
-    rows_deleted = cursor.rowcount
+        rows_deleted = cursor.rowcount
 
-    # Update freshness for affected symbols
-    cursor.execute("SELECT DISTINCT symbol FROM watchlist WHERE active = 1")
-    symbols = [row["symbol"] for row in cursor.fetchall()]
+        # Update freshness for affected symbols
+        cursor.execute("SELECT DISTINCT symbol FROM watchlist WHERE active = 1")
+        symbols = [row["symbol"] for row in cursor.fetchall()]
 
-    for symbol in symbols:
-        _update_freshness(conn, symbol)
+        for symbol in symbols:
+            _update_freshness(conn, symbol)
 
-    conn.close()
-    return rows_deleted
+        return rows_deleted
 
 
 def _update_freshness(conn: sqlite3.Connection, symbol: str):
@@ -346,55 +329,53 @@ def _update_freshness(conn: sqlite3.Connection, symbol: str):
 
 def get_freshness_info(symbol: str) -> Optional[Dict]:
     """Get data freshness information for a symbol"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT * FROM data_freshness WHERE symbol = ?
-    """, (symbol,))
+        cursor.execute("""
+            SELECT * FROM data_freshness WHERE symbol = ?
+        """, (symbol,))
 
-    row = cursor.fetchone()
-    conn.close()
+        row = cursor.fetchone()
 
-    if not row:
-        return None
+        if not row:
+            return None
 
-    return {
-        "symbol": row["symbol"],
-        "oldest_bar": row["oldest_bar"],
-        "newest_bar": row["newest_bar"],
-        "bar_count": row["bar_count"],
-        "last_checked": row["last_checked"],
-        "gaps_detected": json.loads(row["gaps_detected"]) if row["gaps_detected"] else {"gaps": []}
-    }
+        return {
+            "symbol": row["symbol"],
+            "oldest_bar": row["oldest_bar"],
+            "newest_bar": row["newest_bar"],
+            "bar_count": row["bar_count"],
+            "last_checked": row["last_checked"],
+            "gaps_detected": json.loads(row["gaps_detected"]) if row["gaps_detected"] else {"gaps": []}
+        }
 
 
 def get_latest_bar(symbol: str) -> Optional[OHLCVBar]:
     """Get the most recent bar for a symbol"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT symbol, timestamp, open, high, low, close, volume, vwap
-        FROM market_data_bars
-        WHERE symbol = ?
-        ORDER BY timestamp DESC
-        LIMIT 1
-    """, (symbol,))
+        cursor.execute("""
+            SELECT symbol, timestamp, open, high, low, close, volume, vwap
+            FROM market_data_bars
+            WHERE symbol = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (symbol,))
 
-    row = cursor.fetchone()
-    conn.close()
+        row = cursor.fetchone()
 
-    if not row:
-        return None
+        if not row:
+            return None
 
-    return OHLCVBar(
-        symbol=row["symbol"],
-        timestamp=row["timestamp"],
-        open=row["open"],
-        high=row["high"],
-        low=row["low"],
-        close=row["close"],
-        volume=row["volume"],
-        vwap=row["vwap"]
-    )
+        return OHLCVBar(
+            symbol=row["symbol"],
+            timestamp=row["timestamp"],
+            open=row["open"],
+            high=row["high"],
+            low=row["low"],
+            close=row["close"],
+            volume=row["volume"],
+            vwap=row["vwap"]
+        )
