@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """
-Main trading loop - schedules cycles and invokes Commander.
+DEPRECATED: Main trading loop - schedules cycles and invokes Commander.
 
-This is the entry point for the Agentic AlphaHive Runtime.
+⚠️  THIS FILE IS DEPRECATED AND MOVED TO LEGACY ⚠️
+
+The system now uses manual command-triggered mode instead of automatic loops.
+See MIGRATION.md for details.
+
+New approach:
+- Use slash commands in Claude Code to trigger trading analysis
+- Call workflow_skills.run_full_trading_analysis() directly
+- Optional: Use runtime/data_sync_daemon.py for background updates
+
+This file is kept for reference only.
 """
 
 import sys

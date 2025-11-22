@@ -9,34 +9,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from contextlib import contextmanager
 
-
-DB_PATH = Path(__file__).parent / "trades.db"
-
-
-@contextmanager
-def get_db_connection():
-    """
-    Context manager for database connections.
-
-    Yields:
-        sqlite3.Connection: Database connection with WAL mode enabled
-    """
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row  # Return rows as dictionaries
-
-    # Enable WAL mode for better concurrency
-    conn.execute("PRAGMA journal_mode=WAL")
-
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+# Import unified database configuration
+from .db_config import get_db_connection, DB_PATH
 
 
 def initialize_database():

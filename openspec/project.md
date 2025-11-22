@@ -19,8 +19,8 @@
 - **MCP Protocol (2024-11-05)**: Communication between Claude and external services
 
 ### Financial Infrastructure
-- **Interactive Brokers (IBKR)**: Order execution and account management
-- **ThetaData API**: Market data, options chains, historical data
+- **Interactive Brokers (IBKR)**: Order execution and account management (via MCP)
+- **ThetaData REST API**: Market data, options chains, historical data (direct HTTP calls, not MCP)
 - **ib_insync**: Python library for IBKR TWS/Gateway integration
 
 ### Data & Processing
@@ -57,26 +57,30 @@
 ### Architecture Patterns
 
 **Recursive Agent Structure:**
-- **Commander** (Claude Code): High-level decision making, strategy selection
+- **Commander** (Claude Code): High-level decision making via manual command triggers
 - **Alpha Swarm** (Concurrent sub-agents): Parallel analysis via `swarm_core.py` Skill
 - **Separation of concerns**: Logic (templates) vs Parameters (JSON configs)
+- **Interaction Model**: Manual command-triggered (not automatic loop)
 
 **MCP Server Pattern:**
-- Each integration is a separate MCP server (IBKR, ThetaData, Memory)
-- Servers expose tools via JSON-RPC over stdio
+- IBKR uses MCP server for trading operations
+- ThetaData uses direct REST API (not MCP) for better reliability
+- Servers expose tools via JSON-RPC over stdio (for MCP-based services)
 - Safety validation happens before API calls, not after
 
 **Safety Layer:**
 - Hard-coded limits in `safety.py` (DO NOT modify without human approval)
 - Independent watchdog process (`runtime/watchdog.py`) with separate IBKR connection
-- Circuit breakers: daily loss limit, drawdown triggers, consecutive loss limit
-- Order validation before execution, not after
+- Circuit breakers: daily loss limit ($1,000), drawdown triggers (10%), max trade risk ($500)
+- Order validation before execution via `place_order_with_guard()`
+- **Note**: Manual command mode eliminates need for heartbeat monitoring
 
 **Data Flow:**
-1. Market data → Swarm analysis → Signal aggregation → Commander decision
-2. All swarm inputs saved to `data_lake/snapshots/` for reproducibility
-3. Orders validated through safety layer before IBKR submission
-4. Results logged to `trades.db` for post-analysis
+1. User command → Commander health check → Market data sync
+2. Commander calls swarm analysis → Signal aggregation
+3. All swarm inputs saved to `data_lake/snapshots/` for reproducibility
+4. Commander decision → Order validation → IBKR submission
+5. Results logged to `trades.db` for post-analysis
 
 ### Testing Strategy
 
@@ -158,10 +162,12 @@
 - Python 3.8+ required for asyncio features
 
 ### Operational Constraints
-- Watchdog process must run independently of agent
+- **Manual command mode**: Trading analysis triggered by user commands, not automatic loops
+- Watchdog process runs independently for account risk monitoring
 - All trading decisions must be logged with full context snapshots
 - No direct code generation for orders (use `execution_gate.py` primitives)
 - Configuration changes (JSON) allowed; template logic changes require review
+- Data access via REST API for ThetaData; MCP for IBKR only
 
 ### Regulatory/Risk Constraints
 - Options-approved IBKR account required
@@ -184,9 +190,11 @@
   - API key in `.env` file
 
 ### MCP Servers (Internal)
-- **ibkr** (`mcp-servers/ibkr/`): Trading execution, account queries, position management
-- **news-sentiment** (`mcp-servers/news-sentiment/`): News analysis for sentiment filtering
+- **ibkr** (`mcp-servers/ibkr/`): Trading execution, account queries, position management (implemented)
+- **news-sentiment** (planned): News analysis for sentiment filtering
 - **memory** (planned): Long-term agent memory and state persistence
+
+**Note**: ThetaData is accessed via REST API (not MCP) for improved reliability and simpler debugging.
 
 ### Python Libraries
 - `ib_insync`: IBKR API wrapper (install: `pip install ib_insync`)

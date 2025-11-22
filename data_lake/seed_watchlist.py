@@ -2,12 +2,10 @@
 Seed initial watchlist with liquid ETFs and popular stocks.
 """
 
-import sqlite3
 from datetime import datetime
-from pathlib import Path
 
-
-DB_PATH = Path(__file__).parent / "trades.db"
+# Import unified database configuration
+from .db_config import get_db_connection
 
 
 # Initial watchlist: Top liquid ETFs and high-volume stocks
@@ -37,33 +35,28 @@ def seed_initial_watchlist() -> int:
     Returns:
         Number of symbols added
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    # Check if watchlist already has data
-    cursor.execute("SELECT COUNT(*) as count FROM watchlist")
-    existing_count = cursor.fetchone()["count"]
+        # Check if watchlist already has data
+        cursor.execute("SELECT COUNT(*) as count FROM watchlist")
+        existing_count = cursor.fetchone()["count"]
 
-    if existing_count > 0:
-        conn.close()
-        return 0  # Already seeded
+        if existing_count > 0:
+            return 0  # Already seeded
 
-    # Insert initial symbols
-    now = datetime.now().isoformat()
-    added = 0
+        # Insert initial symbols
+        now = datetime.now().isoformat()
+        added = 0
 
-    for entry in INITIAL_SYMBOLS:
-        cursor.execute("""
-            INSERT INTO watchlist (symbol, added_at, active, priority, notes)
-            VALUES (?, ?, 1, ?, ?)
-        """, (entry["symbol"], now, entry["priority"], entry["notes"]))
-        added += 1
+        for entry in INITIAL_SYMBOLS:
+            cursor.execute("""
+                INSERT INTO watchlist (symbol, added_at, active, priority, notes)
+                VALUES (?, ?, 1, ?, ?)
+            """, (entry["symbol"], now, entry["priority"], entry["notes"]))
+            added += 1
 
-    conn.commit()
-    conn.close()
-
-    return added
+        return added
 
 
 if __name__ == "__main__":
