@@ -408,18 +408,127 @@ python -c "from data_lake.seed_watchlist import seed_default_watchlist; seed_def
 
 ---
 
-### 6.5 脚本选择指南
+### 6.5 交易运行时脚本
+
+以下脚本提供了完整的交易分析、健康检查和风险管理功能。
+
+#### `runtime/trade_analyze.py`
+**功能**: 完整的7步交易分析工作流
+
+**使用方法**:
+```bash
+# 分析所有板块，置信度0.75，最多10个信号
+python runtime/trade_analyze.py
+
+# 只分析科技板块，置信度0.85
+python runtime/trade_analyze.py --sector=tech --confidence=0.85
+
+# 准备模式（只分析不执行）
+python runtime/trade_analyze.py --prepare-only
+
+# 强制同步数据
+python runtime/trade_analyze.py --force-sync
+```
+
+**说明**:
+- ✅ 完整7步工作流：健康检查 → 账户状态 → 持仓风险 → 蜂群分析 → 信号过滤 → 风险评估 → 执行决策
+- ✅ 支持板块过滤：`tech`（科技）、`finance`（金融）、`healthcare`（医疗）、`energy`（能源）、`ALL`（全部）
+- ✅ 可配置置信度阈值（0.0-1.0）
+- ✅ 准备模式可用于回测和分析
+- ✅ 自动检查市场状态和数据质量
+- ✅ 完整的交互式提示和错误处理
+
+**工作流步骤**:
+1. 市场健康检查（数据质量、市场状态）
+2. 账户状态获取（净值、可用资金）
+3. 持仓风险分析（风险评分、集中度）
+4. 蜂群智能分析（并发咨询多个实例）
+5. 信号过滤（按置信度和板块）
+6. 风险评估（Kelly仓位计算、投资组合约束）
+7. 执行决策（准备模式或实际下单）
+
+---
+
+#### `runtime/trade_health.py`
+**功能**: 快速市场健康检查工具
+
+**使用方法**:
+```bash
+python runtime/trade_health.py
+```
+
+**说明**:
+- ✅ 快速检查市场开盘状态
+- ✅ 评估数据质量（GOOD / STALE / CRITICAL）
+- ✅ 显示关键指数价格（SPY、QQQ）和数据年龄
+- ✅ 提供明确的建议（数据同步、交易建议）
+- ✅ 退出码：0=正常，1=市场关闭，2=数据质量CRITICAL
+
+**典型输出**:
+```
+======================================================================
+市场健康检查
+======================================================================
+检查时间: 2025-11-22 10:30:00
+
+市场状态: REGULAR
+市场开盘: ✅ YES
+数据质量: GOOD
+
+SPY: $457.23 (数据年龄: 0h 5m)
+QQQ: $389.45 (数据年龄: 0h 5m)
+
+建议:
+  🟢 数据质量 GOOD - 可以正常交易
+======================================================================
+```
+
+---
+
+#### `runtime/trade_risk.py`
+**功能**: 持仓风险分析工具
+
+**使用方法**:
+```bash
+# 使用默认阈值70
+python runtime/trade_risk.py
+
+# 自定义风险阈值
+python runtime/trade_risk.py --threshold=60
+```
+
+**说明**:
+- ✅ 分析当前持仓的风险水平
+- ✅ 计算风险评分（0-100）
+- ✅ 识别需要关注的高风险持仓
+- ✅ 提供具体的行动建议
+- ✅ 退出码：0=风险可控，1=风险超过阈值
+
+**风险等级**:
+- 🟢 低风险（评分 0-40）：可正常交易
+- 🟡 中等风险（评分 41-70）：需要监控
+- 🔴 高风险（评分 71-100）：建议减仓或对冲
+
+**注**: 此脚本需要通过 Claude Code 环境运行以访问 IBKR MCP 持仓数据。直接运行将使用模拟数据。
+
+---
+
+### 6.6 脚本选择指南
 
 | 使用场景 | 推荐方法 |
 |---------|---------|
-| 启动交易分析 | 在 Claude Code 中输入命令："请开始一次交易分析" |
+| 完整交易分析 | `python runtime/trade_analyze.py` 或 `/trade:analyze` |
+| 快速市场检查 | `python runtime/trade_health.py` 或 `/trade:health` |
+| 持仓风险分析 | `python runtime/trade_risk.py` 或 `/trade:risk` |
+| 手动数据同步 | `python runtime/data_sync_daemon.py --once` 或 `/trade:sync` |
 | 启动安全监控 | `python runtime/watchdog.py` (后台运行) |
 | 定期数据同步 | `python runtime/data_sync_daemon.py --interval 10` |
-| 手动更新数据 | `python runtime/data_sync_daemon.py --once` |
 | 验证系统配置 | `python verify_setup.py` |
 | 测试 ThetaData 连接 | `python scripts/test_theta_fix.py` |
 | 测试模板本地化 | `python test_template_localization.py` |
 | 初始化监控列表 | `python -c "from data_lake import seed_initial_watchlist; seed_initial_watchlist()"` |
+
+**Slash Commands**: 在 Claude Code 中可使用 `/trade:*` 系列命令作为快捷方式调用上述脚本。
 
 ---
 
