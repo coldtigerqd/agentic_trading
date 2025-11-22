@@ -87,6 +87,13 @@ from .workflow_skills import (
     run_position_risk_analysis,
     TradingAnalysisResult
 )
+from .strategy_manager import (
+    list_active_strategies,
+    get_strategy_config,
+    enable_strategy,
+    disable_strategy,
+    analyze_with_strategy
+)
 
 __all__ = [
     # Swarm Intelligence
@@ -158,7 +165,13 @@ __all__ = [
     "run_full_trading_analysis",
     "run_market_health_check",
     "run_position_risk_analysis",
-    "TradingAnalysisResult"
+    "TradingAnalysisResult",
+    # Strategy Manager
+    "list_active_strategies",
+    "get_strategy_config",
+    "enable_strategy",
+    "disable_strategy",
+    "analyze_with_strategy"
 ]
 
 __version__ = "2.0.0"  # 升级版本号，反映架构优化

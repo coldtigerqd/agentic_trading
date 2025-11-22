@@ -597,6 +597,13 @@ python runtime/trade_risk.py --threshold=60
 | 快速市场检查 | `python runtime/trade_health.py` 或 `/trade:health` |
 | 持仓风险分析 | `python runtime/trade_risk.py` 或 `/trade:risk` |
 | 手动数据同步 | `python runtime/data_sync_daemon.py --once` 或 `/trade:sync` |
+| 查看观察列表 | `/trade:watchlist` |
+| 添加监控标的 | `/trade:watchlist-add SYMBOL [优先级=N] [备注=text]` |
+| 移除监控标的 | `/trade:watchlist-remove SYMBOL [--force]` |
+| 查看策略实例 | `/trade:strategies` |
+| 启用策略实例 | `/trade:strategy-enable INSTANCE_ID` |
+| 禁用策略实例 | `/trade:strategy-disable INSTANCE_ID` |
+| 分析特定标的 | `/trade:analyze-symbol SYMBOL INSTANCE_ID` |
 | 启动安全监控 | `python runtime/watchdog.py` (后台运行) |
 | 定期数据同步 | `python runtime/data_sync_daemon.py --interval 10` |
 | 验证系统配置 | `python verify_setup.py` |
@@ -604,7 +611,90 @@ python runtime/trade_risk.py --threshold=60
 | 测试模板本地化 | `python test_template_localization.py` |
 | 初始化监控列表 | `python -c "from data_lake import seed_initial_watchlist; seed_initial_watchlist()"` |
 
-**Slash Commands**: 在 Claude Code 中可使用 `/trade:*` 系列命令作为快捷方式调用上述脚本。
+**Slash Commands**: 在 Claude Code 中可使用 `/trade:*` 系列命令作为快捷方式。
+
+### 6.7 Slash Commands 详细文档
+
+系统提供了完整的 slash command 命令集，用于便捷地管理观察列表和策略实例：
+
+#### 观察列表管理
+
+**`/trade:watchlist`**
+- 功能：显示当前观察列表，包括所有标的、优先级和数据新鲜度状态
+- 用法：`/trade:watchlist`
+- 输出：表格显示标的符号、优先级、数据状态（GOOD/STALE/CRITICAL）、最新数据时间、数据条数
+
+**`/trade:watchlist-add`**
+- 功能：添加一个或多个标的到观察列表
+- 用法：`/trade:watchlist-add SYMBOL [SYMBOL2 ...] [优先级=N] [备注=text]`
+- 参数：
+  - `SYMBOL`: 标的符号（自动转为大写，必须是2-5个字母）
+  - `优先级=N`: 可选，优先级1-10（默认5，越高越优先）
+  - `备注=text`: 可选，添加备注说明
+- 示例：
+  ```
+  /trade:watchlist-add AAPL
+  /trade:watchlist-add GOOGL META 优先级=3
+  /trade:watchlist-add TSLA 优先级=1 备注=高波动性标的
+  ```
+- 行为：如果标的已存在，会更新优先级和备注；如果之前被删除，会重新激活
+
+**`/trade:watchlist-remove`**
+- 功能：从观察列表中移除一个或多个标的（软删除，保留历史数据）
+- 用法：`/trade:watchlist-remove SYMBOL [SYMBOL2 ...] [--force]`
+- 参数：
+  - `SYMBOL`: 要移除的标的符号
+  - `--force`: 可选，强制移除（即使检测到近期有交易活动）
+- 示例：
+  ```
+  /trade:watchlist-remove TSLA
+  /trade:watchlist-remove GOOGL META --force
+  ```
+- 安全检查：如果标的有近期交易记录，需要添加 `--force` 标志才能移除
+- 行为：设置 `active=0`（软删除），历史数据保留在数据库中
+
+#### 策略管理
+
+**`/trade:strategies`**
+- 功能：列出所有蜂群智能策略实例及其配置
+- 用法：`/trade:strategies`
+- 输出：表格显示实例ID、模板名称、板块、启用状态（✓/○）、标的池大小、关键参数
+- 说明：启用的策略会参与 `/trade:analyze` 的蜂群咨询
+
+**`/trade:strategy-enable`**
+- 功能：启用一个策略实例
+- 用法：`/trade:strategy-enable INSTANCE_ID`
+- 参数：`INSTANCE_ID` 是策略实例ID（JSON文件名不含扩展名）
+- 示例：`/trade:strategy-enable momentum_tech_short`
+- 行为：使用原子文件操作（write-to-temp-then-rename）确保配置安全更新
+- 幂等性：如果策略已启用，不会重复修改
+
+**`/trade:strategy-disable`**
+- 功能：禁用一个策略实例（保留所有配置）
+- 用法：`/trade:strategy-disable INSTANCE_ID`
+- 参数：`INSTANCE_ID` 是策略实例ID
+- 示例：`/trade:strategy-disable iron_condor_tech`
+- 行为：设置 `enabled=false`，所有其他配置保留不变
+- 说明：禁用的策略不参与蜂群咨询，但可随时重新启用
+
+**`/trade:analyze-symbol`**
+- 功能：使用特定策略分析特定标的（用于测试和学习）
+- 用法：`/trade:analyze-symbol SYMBOL INSTANCE_ID`
+- 参数：
+  - `SYMBOL`: 标的符号
+  - `INSTANCE_ID`: 策略实例ID
+- 示例：
+  ```
+  /trade:analyze-symbol AAPL momentum_tech_short
+  /trade:analyze-symbol TSLA mean_reversion_energy
+  ```
+- 输出：详细的分析结果，包括：
+  - 信号（BUY/SELL/HOLD）和置信度
+  - 策略推理和关键指标
+  - 建议的交易结构（如果信号可操作）
+  - 数据质量警告
+- 用途：测试策略在特定标的上的表现，学习策略逻辑，调试策略参数
+- 注意：此为单策略单标的分析，不同于 `/trade:analyze` 的全蜂群咨询
 
 ---
 
