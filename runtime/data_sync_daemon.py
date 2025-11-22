@@ -4,11 +4,16 @@
 
 每10分钟自动同步观察列表数据到本地数据库。
 
+⚠️  数据延迟说明：
+    本系统使用 ThetaData v3 免费计划（venue='utp_cta'），数据相对实盘有 15 分钟延迟。
+    这是正常现象，不影响历史数据分析和策略回测。
+
 特性：
 - ✅ 增量更新：只获取新数据，自动去重
 - ✅ 市场感知：只在交易时段主动同步
 - ✅ 错误重试：网络失败自动重试
 - ✅ 完整日志：记录所有同步活动
+- ✅ 时区感知：所有时间使用美东时区 (ET/America/New_York)
 
 使用方法：
     # 直接运行（前台）
@@ -69,118 +74,90 @@ def run_sync_cycle() -> Dict:
 
     cycle_start = time.time()
 
-    # 1. 检查是否需要同步
-    sync_info = sync_watchlist_incremental(skip_if_market_closed=True)
+    # 1. 调用增量同步技能（会自动检查市场状态）
+    sync_result = sync_watchlist_incremental(skip_if_market_closed=True)
 
-    logger.info(f"Market Status: {sync_info['market_status']['session']}")
-    logger.info(f"Market Open: {'✅ YES' if sync_info['market_status']['market_open'] else '❌ NO'}")
+    # 2. 解析市场状态
+    market_status = sync_result.get('market_status', {})
+    logger.info(f"🕒 Timestamp: {market_status.get('timestamp', 'N/A')}")
+    logger.info(f"📈 Market Status: {market_status.get('session', 'UNKNOWN')}")
+    logger.info(f"🔓 Market Open: {'✅ YES' if market_status.get('market_open') else '❌ NO'}")
 
-    if not sync_info['should_sync']:
-        logger.info(f"⏭️  Skip Reason: {sync_info['message']}")
+    if market_status.get('next_market_open'):
+        logger.info(f"⏰ Next Open: {market_status['next_market_open']}")
+
+    logger.info(f"⏱️  Data Delay: 📍 15 minutes (ThetaData v3 免费计划)")
+
+    # 3. 检查是否成功同步
+    if not sync_result.get('success'):
+        # 市场关闭或其他错误
+        errors = sync_result.get('errors', [])
+        reason = errors[0] if errors else "Unknown reason"
+        logger.info(f"⏭️  Skip Reason: {reason}")
         logger.info("=" * 70 + "\n")
         return {
             'synced': False,
-            'reason': sync_info['message'],
-            'market_status': sync_info['market_status']
+            'reason': reason,
+            'market_status': market_status,
+            'stats': {
+                'total': sync_result.get('total_symbols', 0),
+                'success': 0,
+                'failed': 0
+            }
         }
 
-    symbols = sync_info['symbols_to_sync']
-    logger.info(f"📋 Symbols to sync: {len(symbols)}")
-    logger.info(f"📌 Symbols: {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}")
+    # 4. 输出同步统计信息
+    total_symbols = sync_result.get('total_symbols', 0)
+    synced_count = sync_result.get('synced_count', 0)
+    failed_count = sync_result.get('failed_count', 0)
+    execution_time = sync_result.get('execution_time', 0)
 
-    # 2. 获取数据新鲜度报告
-    freshness = get_data_freshness_report(symbols)
-    stale_count = sum(1 for s in freshness['symbols'] if s['is_stale'])
-    logger.info(f"📈 Data freshness: {stale_count}/{len(symbols)} symbols stale")
+    logger.info(f"\n📋 Total Symbols: {total_symbols}")
+    logger.info(f"✅ Synced: {synced_count}")
+    logger.info(f"❌ Failed: {failed_count}")
+    logger.info(f"⏱️  Execution Time: {execution_time:.2f}s")
 
-    # 3. 同步每个股票
-    stats = {
-        'total': len(symbols),
-        'success': 0,
-        'failed': 0,
-        'new_bars': 0,
-        'duplicates': 0,
-        'errors': []
-    }
+    # 5. 显示详细结果（前10个）
+    results = sync_result.get('results', [])
+    if results:
+        logger.info("\n" + "─" * 70)
+        logger.info("Sample Results (first 10):")
+        logger.info("─" * 70)
+        for i, result in enumerate(results[:10], 1):
+            symbol = result.get('symbol', 'UNKNOWN')
+            status = result.get('status', 'unknown')
 
-    logger.info("\n" + "─" * 70)
-    logger.info("Starting symbol-by-symbol sync...")
-    logger.info("─" * 70 + "\n")
+            if status == 'synced':
+                bars_added = result.get('bars_added', 0)
+                timestamp = result.get('timestamp', 'N/A')
+                if bars_added > 0:
+                    logger.info(f"  [{i}] ✅ {symbol}: New bar @ {timestamp}")
+                else:
+                    logger.info(f"  [{i}] ⏭️  {symbol}: Duplicate (already in DB)")
+            else:
+                error = result.get('error', 'Unknown error')
+                logger.info(f"  [{i}] ❌ {symbol}: {error}")
 
-    for i, symbol in enumerate(symbols, 1):
-        try:
-            logger.info(f"[{i}/{len(symbols)}] Fetching {symbol}...")
-
-            # ===== 关键：这里需要调用 ThetaData MCP =====
-            # 在实际运行时，由 Claude Code 自动调用 MCP 工具
-            #
-            # 示例调用（由 Claude Code 执行）：
-            # snapshot_result = mcp__ThetaData__stock_snapshot_ohlc(symbol=[symbol])
-            #
-            # snapshot_result 格式：
-            # {
-            #     'open': 175.5,
-            #     'high': 178.2,
-            #     'low': 175.1,
-            #     'close': 177.8,
-            #     'volume': 5234567
-            # }
-
-            # 演示模式：打印需要的 MCP 调用
-            logger.info(f"   🔧 MCP Call: mcp__ThetaData__stock_snapshot_ohlc(symbol=['{symbol}'])")
-            logger.info(f"   ⚠️  This daemon requires Claude Code to execute MCP calls")
-
-            # 在实际环境中，下面的代码会处理 MCP 结果：
-            # result = process_snapshot_and_cache(symbol, snapshot_result)
-            #
-            # if result['success']:
-            #     if result['bars_added'] > 0:
-            #         logger.info(f"   ✅ {symbol}: New bar added @ {result['timestamp']}")
-            #         stats['new_bars'] += 1
-            #     else:
-            #         logger.info(f"   ⏭️  {symbol}: Duplicate (already in DB)")
-            #         stats['duplicates'] += 1
-            #     stats['success'] += 1
-            # else:
-            #     logger.error(f"   ❌ {symbol}: {result['error']}")
-            #     stats['failed'] += 1
-            #     stats['errors'].append({'symbol': symbol, 'error': result['error']})
-
-            # 演示模式统计
-            stats['success'] += 1
-
-            # 避免 API 限流
-            time.sleep(0.1)
-
-        except Exception as e:
-            logger.error(f"   ❌ {symbol}: Exception - {e}")
-            stats['failed'] += 1
-            stats['errors'].append({'symbol': symbol, 'error': str(e)})
-
-    # 4. 输出统计信息
-    cycle_duration = time.time() - cycle_start
+    # 6. 显示错误（如果有）
+    errors = sync_result.get('errors', [])
+    if errors:
+        logger.warning("\n⚠️  Errors:")
+        for err in errors[:5]:  # 只显示前5个错误
+            logger.warning(f"   - {err}")
 
     logger.info("\n" + "=" * 70)
     logger.info("📊 Sync Cycle Complete")
-    logger.info("=" * 70)
-    logger.info(f"✅ Success:    {stats['success']}/{stats['total']}")
-    logger.info(f"🆕 New Bars:   {stats['new_bars']}")
-    logger.info(f"⏭️  Duplicates: {stats['duplicates']}")
-    logger.info(f"❌ Failed:     {stats['failed']}")
-    logger.info(f"⏱️  Duration:   {cycle_duration:.2f}s")
-
-    if stats['errors']:
-        logger.warning("\n⚠️  Errors:")
-        for err in stats['errors'][:5]:  # Show first 5 errors
-            logger.warning(f"   - {err['symbol']}: {err['error']}")
-
     logger.info("=" * 70 + "\n")
 
     return {
         'synced': True,
-        'stats': stats,
-        'duration': cycle_duration,
-        'market_status': sync_info['market_status']
+        'stats': {
+            'total': total_symbols,
+            'success': synced_count,
+            'failed': failed_count,
+            'execution_time': execution_time
+        },
+        'market_status': market_status
     }
 
 
@@ -243,7 +220,10 @@ def main():
   */10 * * * * cd /path/to/agentic_trading && python runtime/data_sync_daemon.py --once
 
 注意：
-  此守护进程需要在 Claude Code 环境中运行，以便访问 ThetaData MCP 工具。
+  1. 数据来源：ThetaData v3 API (venue='utp_cta')
+  2. 数据延迟：相对实盘有 15 分钟延迟（免费计划限制）
+  3. 时区处理：所有时间戳使用美东时区 (ET/America/New_York)
+  4. 市场感知：只在交易时段主动同步数据
         """
     )
 
